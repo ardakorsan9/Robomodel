@@ -5,7 +5,12 @@
 
 eta = [x, y, z, phi, theta, psi] in NED (z down), nu = [u, v, w, p, q, r] in the body
 frame, M = M_RB + M_A, C = C_RB + C_A from M (Kirchhoff form, valid for any symmetric M).
-The ocean current is zero.
+
+Ocean current: a constant, irrotational current v_c (NED, m/s). Hydrodynamic terms (added
+mass, damping, lift) see the velocity relative to the water nu_r = nu - nu_c (Fossen 2021,
+ch. 10):
+    M_RB nu_dot + C_RB(nu) nu + M_A nu_r_dot + C_A(nu_r) nu_r + D(nu_r) nu_r + g = tau
+with nu_c = [R^T v_c; 0] and nu_c_dot = [-S(w) R^T v_c; 0].
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from robomodel.hydrostatics import restoring_forces
-from robomodel.rigid_body import skew
+from robomodel.rigid_body import skew, velocity_transform
 
 
 @dataclass(frozen=True)
@@ -35,6 +40,10 @@ class Dynamics:
     b_thr: np.ndarray  # 6 x n thruster allocation
     d_fin: np.ndarray = field(default_factory=lambda: np.zeros((6, 6)))  # x |u|
     b_fin: np.ndarray = field(default_factory=lambda: np.zeros((6, 0)))  # x u|u| delta
+    fin_max: np.ndarray = field(default_factory=lambda: np.zeros(0))  # rad per control fin
+    current_ned: np.ndarray = field(default_factory=lambda: np.zeros(3))  # m/s, constant
+    # d_lin / d_quad act at this point (the hull's centre), not at the body origin
+    r_hydro: np.ndarray = field(default_factory=lambda: np.zeros(3))
 
     @property
     def mass_matrix(self) -> np.ndarray:
@@ -75,15 +84,39 @@ def euler_rate_matrix(phi: float, theta: float) -> np.ndarray:
 
 
 def damping_force(dyn: Dynamics, nu: np.ndarray) -> np.ndarray:
-    """D(nu) nu, including the speed-dependent fin lift."""
-    return dyn.d_lin * nu + dyn.d_quad * np.abs(nu) * nu + abs(nu[0]) * (dyn.d_fin @ nu)
+    """D(nu) nu, including the speed-dependent fin lift.
+
+    The hull drag is defined at the hull centre r_hydro: its velocity there is H nu, and the
+    force moves back to the origin with H^T. For r_hydro = 0 this is the plain diagonal form.
+    """
+    lift = abs(nu[0]) * (dyn.d_fin @ nu)
+    if not np.any(dyn.r_hydro):
+        return dyn.d_lin * nu + dyn.d_quad * np.abs(nu) * nu + lift
+    h = velocity_transform(dyn.r_hydro)
+    nu_c = h @ nu
+    return h.T @ (dyn.d_lin * nu_c + dyn.d_quad * np.abs(nu_c) * nu_c) + lift
 
 
 def fin_control_force(dyn: Dynamics, nu: np.ndarray, deflection: np.ndarray) -> np.ndarray:
     """tau from control-fin deflections (rad); fins only work while moving."""
     if dyn.b_fin.shape[1] == 0:
         return np.zeros(6)
-    return nu[0] * abs(nu[0]) * (dyn.b_fin @ np.asarray(deflection, dtype=float))
+    delta = np.asarray(deflection, dtype=float)
+    if dyn.fin_max.size:
+        delta = np.clip(delta, -dyn.fin_max, dyn.fin_max)  # stall: lift stops growing
+    return nu[0] * abs(nu[0]) * (dyn.b_fin @ delta)
+
+
+def relative_velocity(dyn: Dynamics, state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(nu_r, nu_c_dot): velocity relative to the water and the current's rate in body axes."""
+    nu = state[6:]
+    if not np.any(dyn.current_ned):
+        return nu, np.zeros(6)
+    phi, theta, psi = state[3:6]
+    v_c = rotation_zyx(phi, theta, psi).T @ dyn.current_ned
+    nu_c = np.concatenate([v_c, np.zeros(3)])
+    nu_c_dot = np.concatenate([-np.cross(nu[3:], v_c), np.zeros(3)])
+    return nu - nu_c, nu_c_dot
 
 
 def state_derivative(
@@ -95,7 +128,19 @@ def state_derivative(
     if m_inv is None:
         m_inv = np.linalg.inv(m)
     g = restoring_forces(phi, theta, dyn.weight, dyn.buoyancy, dyn.r_g, dyn.r_b)
-    nu_dot = m_inv @ (tau - coriolis_matrix(m, nu) @ nu - damping_force(dyn, nu) - g)
+    if np.any(dyn.current_ned):
+        nu_r, nu_c_dot = relative_velocity(dyn, state)
+        rhs = (
+            tau
+            - coriolis_matrix(dyn.m_rb, nu) @ nu
+            - coriolis_matrix(dyn.m_a, nu_r) @ nu_r
+            - damping_force(dyn, nu_r)
+            - g
+            + dyn.m_a @ nu_c_dot
+        )
+    else:  # same equations; C is linear in M, so one call does both parts
+        rhs = tau - coriolis_matrix(m, nu) @ nu - damping_force(dyn, nu) - g
+    nu_dot = m_inv @ rhs
     eta_dot = np.concatenate(
         [rotation_zyx(phi, theta, psi) @ nu[:3], euler_rate_matrix(phi, theta) @ nu[3:]]
     )
@@ -142,7 +187,7 @@ def simulate(
     def rhs(t, x):
         tau_t = tau_fn(t, x)
         if deflection is not None:
-            tau_t = tau_t + fin_control_force(dyn, x[6:], deflection)
+            tau_t = tau_t + fin_control_force(dyn, relative_velocity(dyn, x)[0], deflection)
         return state_derivative(dyn, x, tau_t, m_inv)
 
     t_eval = np.arange(0.0, t_end + dt_out / 2, dt_out)

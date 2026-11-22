@@ -1,4 +1,5 @@
-"""Command line interface: robomodel check | build | matlab | testplan | calibrate | wizard."""
+"""Command line interface: robomodel check | build | matlab | gazebo | testplan | calibrate |
+wizard."""
 
 from __future__ import annotations
 
@@ -41,15 +42,41 @@ def main(argv: list[str] | None = None) -> int:
     cal.add_argument(
         "--groups",
         default="damping,fin_lift,body_lift",
-        help="comma list: damping, added_mass, fin_lift, body_lift",
+        help="comma list: damping, added_mass, fin_lift, body_lift, thrust",
     )
     cal.add_argument(
         "-o", "--output", help="calibrated vehicle YAML (default: <vehicle>_calibrated.yaml)"
     )
+    gazebo = commands.add_parser("gazebo", help="write a Gazebo (gz-sim) model and test world")
+    gazebo.add_argument("vehicle", help="path to the vehicle YAML file")
+    gazebo.add_argument("-o", "--output", required=True, help="output folder")
+    gazebo.add_argument(
+        "--disable-coriolis",
+        action="store_true",
+        help="turn off added-mass Coriolis in Gazebo (if it goes unstable)",
+    )
+    serve = commands.add_parser("serve", help="start the web app (upload CAD, get the model)")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
     wizard = commands.add_parser("wizard", help="which measurement improves the model most")
     wizard.add_argument("vehicle", help="path to the vehicle YAML file")
     args = parser.parse_args(argv)
 
+    if args.command == "serve":
+        from robomodel.web import serve as run_server
+
+        print(f"robomodel web app: http://{args.host}:{args.port}")
+        run_server(args.host, args.port)
+        return 0
+    if args.command == "gazebo":
+        from robomodel.gazebo_export import write_gazebo
+
+        model = _load_model(args.vehicle)
+        if model is None:
+            return 1
+        for f in write_gazebo(model, args.output, args.disable_coriolis):
+            print(f"wrote {f}")
+        return 0
     if args.command == "wizard":
         from robomodel.wizard import report as wizard_report
 
@@ -137,7 +164,13 @@ def _calibrate(args) -> int:
         logs = [load_log(p) for p in args.logs]
         checks = [load_log(p) for p in args.validate]
         groups = tuple(g.strip() for g in args.groups.split(",") if g.strip())
-        result = calibrate(model, logs, groups=groups, validation=checks)
+
+        def progress(n, cost):
+            if n % 10 == 0:
+                print(f"  ... {n} simulations, cost {cost:.4g}", file=sys.stderr, flush=True)
+
+        print(f"calibrating on {len(logs)} log(s); this can take a few minutes", file=sys.stderr)
+        result = calibrate(model, logs, groups=groups, validation=checks, progress=progress)
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -176,6 +209,13 @@ def _check(path: str) -> int:
     print(f"  geometry      {shape}")
     print(f"  parts         {len(vehicle.parts)}")
     print(f"  thrusters     {len(vehicle.thrusters)}")
+    controls = sum(f.control for f in vehicle.fins)
+    print(f"  fins          {len(vehicle.fins)} ({controls} control)")
+    m = vehicle.measured
+    measured = [n for n, x in (("r_g", m.r_g), ("inertia_g", m.inertia_g)) if x is not None]
+    print(f"  measured      {', '.join(measured) or 'none'}")
+    cal = vehicle.calibration
+    print(f"  calibration   {'none' if cal.is_identity else cal.note or 'yes'}")
     return 0
 
 

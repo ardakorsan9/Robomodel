@@ -1,15 +1,20 @@
 """Turn a Geometry description into a closed triangle mesh in the body frame (metres).
 
 Primitive shapes are centred on their bounding box, with the long axis along body x
-(forward). Mesh files are used as they are, only scaled to metres.
+(forward). Mesh files are scaled to metres and rotated by `axes`. Assemblies (open, multi-part
+CAD) become a VoxelHull, which offers the same properties as a closed mesh.
 """
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import numpy as np
 import trimesh
 
-from robomodel.vehicle import Geometry
+from robomodel.vehicle import Geometry, axes_matrix
+from robomodel.voxel import VoxelHull, voxelize
 
 SPHERE_SUBDIVISIONS = 6  # ~41k vertices, volume error ~1e-4
 REVOLVE_SECTIONS = 256  # around the axis, volume error ~1e-4
@@ -20,16 +25,40 @@ class GeometryError(ValueError):
     pass
 
 
-def build_mesh(geometry: Geometry) -> trimesh.Trimesh:
+def build_mesh(geometry: Geometry) -> trimesh.Trimesh | VoxelHull:
     if geometry.file is not None:
         mesh = _load_file(geometry)
     else:
         mesh = _PRIMITIVE_BUILDERS[geometry.primitive](**geometry.dims)
-    if not mesh.is_watertight:
+    notes: list[str] = []
+    if geometry.file is not None:
+        mesh, notes = _clean(mesh)
+    if len(mesh.faces) == 0 or np.min(mesh.extents) <= 1e-9 * max(np.max(mesh.extents), 1e-12):
         raise GeometryError(
-            "the mesh is not closed (watertight); volume and buoyancy would be wrong. "
-            "Export the CAD body as a single solid, or repair it (e.g. in MeshLab)."
+            "the geometry has no volume (it is flat or a line); export the solid body, not a "
+            "surface or sketch"
         )
+    if not geometry.assembly and not mesh.is_watertight:
+        notes.append(
+            "the CAD is not a closed solid (holes or separate open surfaces) and could not be "
+            "repaired, so it was turned into voxels like an assembly; volume may be high: "
+            "check it, or export a closed solid"
+        )
+    nested = not geometry.assembly and mesh.is_watertight and _has_nested_bodies(mesh)
+    if nested:
+        notes.append(
+            "the CAD has solids inside other solids (e.g. a battery inside the hull); they were "
+            "merged with voxels so their volume is not counted twice"
+        )
+    if geometry.assembly or not mesh.is_watertight or nested:
+        pitch = geometry.voxel if geometry.assembly else float(np.max(mesh.extents)) / 200
+        broken_single_body = not geometry.assembly and not mesh.is_watertight
+        hull = voxelize(mesh, pitch, close_gaps=broken_single_body)
+        hull.metadata["warnings"] = notes
+        if geometry.origin == "buoyancy":
+            hull.apply_translation(-hull.center_mass)
+        return hull
+    mesh.metadata["warnings"] = notes
     if mesh.volume < 0:
         mesh.invert()  # inward-facing normals give a negative volume
     if geometry.origin == "buoyancy":
@@ -37,14 +66,54 @@ def build_mesh(geometry: Geometry) -> trimesh.Trimesh:
     return mesh
 
 
+def _clean(mesh: trimesh.Trimesh) -> tuple[trimesh.Trimesh, list[str]]:
+    """Fix the usual export defects: duplicate vertices and faces, degenerate triangles,
+    small holes, flipped normals. Returns notes about what was repaired."""
+    notes = []
+    faces_before = len(mesh.faces)
+    mesh.merge_vertices()
+    mesh.update_faces(mesh.unique_faces())
+    mesh.update_faces(mesh.nondegenerate_faces())
+    mesh.remove_unreferenced_vertices()
+    removed = faces_before - len(mesh.faces)
+    if removed:
+        notes.append(f"removed {removed} duplicate or degenerate triangles from the CAD")
+    if not mesh.is_watertight:
+        try:
+            trimesh.repair.fill_holes(mesh)
+            if not mesh.is_watertight:
+                mesh = _cap_holes(mesh)
+        except Exception:  # repair is best effort
+            pass
+        if mesh.is_watertight:
+            notes.append("closed holes in the CAD surface (check the volume)")
+    if mesh.is_watertight and not mesh.is_winding_consistent:
+        trimesh.repair.fix_winding(mesh)
+    return mesh, notes
+
+
 def _load_file(geometry: Geometry) -> trimesh.Trimesh:
+    suffix = Path(geometry.file).suffix.lower()
+    if suffix in (".step", ".stp") and importlib.util.find_spec("cascadio") is None:
+        raise GeometryError("STEP files need the 'cascadio' package: uv add cascadio")
+    if suffix in (".igs", ".iges", ".sldprt", ".f3d"):
+        raise GeometryError(f"{suffix} files are not supported: export STEP or STL from the CAD")
     try:
+        # STEP: OpenCASCADE (cascadio) tessellates the solids and returns metres, so only an
+        # explicit `unit:` in the vehicle file changes the scale.
         mesh = trimesh.load(geometry.file, force="mesh")
     except Exception as e:  # trimesh raises many different types
         raise GeometryError(f"could not read {geometry.file}: {e}") from e
     if not isinstance(mesh, trimesh.Trimesh) or len(mesh.faces) == 0:
         raise GeometryError(f"{geometry.file} contains no triangles")
     mesh.apply_scale(geometry.unit_scale)
+    rotation = axes_matrix(geometry.axes)
+    if any(geometry.rotate):
+        rotation = _rpy_matrix(*np.radians(geometry.rotate)) @ rotation
+    if not np.allclose(rotation, np.eye(3)):
+        transform = np.eye(4)
+        transform[:3, :3] = rotation
+        mesh.apply_transform(transform)
     return mesh
 
 
@@ -116,3 +185,91 @@ _PRIMITIVE_BUILDERS = {
     "cylinder": _cylinder,
     "myring": _myring,
 }
+
+
+def _rpy_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
+    """Rotation by roll (x), then pitch (y), then yaw (z): R = Rz Ry Rx."""
+    cr, sr, cp, sp, cy, sy = (np.cos(roll), np.sin(roll), np.cos(pitch), np.sin(pitch),
+                              np.cos(yaw), np.sin(yaw))
+    rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
+    ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+    rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
+    return rz @ ry @ rx
+
+
+def tilt_from_body_x(hull) -> float:
+    """Angle (deg) between the hull's long principal axis and body x."""
+    inertia = np.asarray(hull.moment_inertia)
+    values, vectors = np.linalg.eigh(inertia)
+    axis = vectors[:, int(np.argmin(values))]  # long axis: smallest moment of inertia
+    return float(np.degrees(np.arccos(min(1.0, abs(axis[0])))))
+
+
+def _has_nested_bodies(mesh: trimesh.Trimesh) -> bool:
+    """True if a closed body's bounding box lies inside another body's (a solid inside a
+    solid, which would count its volume twice)."""
+    if len(mesh.faces) > 2_000_000:
+        return False
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    nf, nv = len(mesh.faces), len(mesh.vertices)
+    rows = np.repeat(np.arange(nf), 3)
+    graph = coo_matrix((np.ones(3 * nf), (rows, mesh.faces.ravel() + nf)), shape=(nf + nv,) * 2)
+    n, labels = connected_components(graph, directed=False)
+    labels = labels[:nf]
+    if n - nv <= 1 and len(np.unique(labels)) <= 1:
+        return False
+    boxes = []
+    for body in np.unique(labels):
+        verts = mesh.vertices[np.unique(mesh.faces[labels == body])]
+        boxes.append((verts.min(axis=0), verts.max(axis=0)))
+    for i, (lo_i, hi_i) in enumerate(boxes):
+        for j, (lo_j, hi_j) in enumerate(boxes):
+            if i != j and np.all(lo_i >= lo_j) and np.all(hi_i <= hi_j):
+                return True
+    return False
+
+
+MAX_CAPPED_HOLES = 50
+
+
+def _cap_holes(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+    """Close open boundary loops with a triangle fan from each loop's centre.
+
+    CAD exports usually lose whole flat caps (an end of a tube, a lid); a fan closes those
+    exactly and approximates gently curved ones.
+    """
+    import networkx as nx
+
+    edges = mesh.edges_sorted
+    unique, counts = np.unique(edges, axis=0, return_counts=True)
+    boundary = unique[counts == 1]
+    if len(boundary) == 0:
+        return mesh
+    graph = nx.Graph()
+    graph.add_edges_from(map(tuple, boundary))
+    loops = [c for c in nx.connected_components(graph) if len(c) >= 3]
+    if not loops or len(loops) > MAX_CAPPED_HOLES:
+        return mesh
+    vertices = [mesh.vertices]
+    faces = [mesh.faces]
+    next_index = len(mesh.vertices)
+    for loop in loops:
+        sub = graph.subgraph(loop)
+        try:
+            cycle = [u for u, _ in nx.find_cycle(sub)]
+        except nx.NetworkXNoCycle:
+            continue
+        if len(cycle) != len(loop):  # not a simple loop: leave it
+            continue
+        centre = mesh.vertices[cycle].mean(axis=0)
+        vertices.append(centre[None, :])
+        ring = np.array(cycle)
+        fan = np.column_stack([np.roll(ring, -1), ring, np.full(len(ring), next_index)])
+        faces.append(fan)
+        next_index += 1
+    capped = trimesh.Trimesh(np.vstack(vertices), np.vstack(faces), process=True)
+    trimesh.repair.fix_winding(capped)
+    trimesh.repair.fix_normals(capped)
+    return capped if capped.is_watertight else mesh

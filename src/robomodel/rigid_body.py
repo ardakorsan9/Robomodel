@@ -128,3 +128,20 @@ def rigid_body_mass_matrix(props: MassProperties) -> np.ndarray:
     m = props.mass.value
     s = skew(props.r_g.value)
     return np.block([[m * np.eye(3), -m * s], [m * s, props.inertia_o.value]])
+
+
+def velocity_transform(r) -> np.ndarray:
+    """H(r) with nu_P = H nu_O: velocity of the point P at r, from the velocity at origin O.
+
+    v_P = v_O + w x r = v_O - S(r) w. Forces move back with H^T, and a mass (or added mass)
+    matrix given about P becomes H^T M_P H about O (Fossen, "system transformation matrix").
+    """
+    h = np.eye(6)
+    h[:3, 3:] = -skew(np.asarray(r, dtype=float))
+    return h
+
+
+def move_mass_matrix(m_p: np.ndarray, r) -> np.ndarray:
+    """A 6x6 mass matrix about point P (at r from the origin) expressed about the origin."""
+    h = velocity_transform(r)
+    return h.T @ m_p @ h

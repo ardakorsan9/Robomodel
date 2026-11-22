@@ -80,7 +80,29 @@ def _metrics(model: VehicleModel, dyn: Dynamics, thrust_scale: float = 1.0) -> d
             atol=1e-8,
         )
         out["dönüş hızı (5° dümen)"] = float(abs(traj.nu[-1, 5]))
-    bg = (dyn.r_g[2] * dyn.weight - dyn.r_b[2] * dyn.buoyancy) / dyn.weight
+    elif v.thrusters:
+        # ROV-style: turn and dive with thrusters at half command (steady state)
+        for axis, name in ((5, "dönüş hızı (%50 itici)"), (2, "dikey hız (%50 itici)")):
+            cols = [
+                i
+                for i in range(dyn.b_thr.shape[1])
+                if abs(dyn.b_thr[axis, i]) > 1e-6 and i not in forward
+            ]
+            if not cols and axis == 5:
+                cols = [i for i in forward if abs(dyn.b_thr[axis, i]) > 1e-6]
+            if not cols:
+                continue
+            commands = np.zeros(len(v.thrusters))
+            commands[cols] = 0.5 * np.sign(dyn.b_thr[axis, cols])
+            force = float((dyn.b_thr @ thrust(v.thrusters, commands))[axis]) * thrust_scale
+            if axis == 2:
+                force += dyn.weight - dyn.buoyancy  # net weight helps or fights the dive
+            a, b = dyn.d_quad[axis], dyn.d_lin[axis]
+            sign = np.sign(force)
+            force = abs(force)
+            speed = (-b + np.sqrt(b * b + 4 * a * force)) / (2 * a) if a > 0 else force / b
+            out[name] = float(sign * speed) if axis == 2 else float(speed)
+    bg = dyn.r_g[2] - dyn.r_b[2]  # z down: CG below CB means bg > 0
     if bg > 0:
         m = dyn.mass_matrix
         out["yuvarlanma periyodu"] = 2 * np.pi * np.sqrt(m[3, 3] / (bg * dyn.weight))
@@ -241,6 +263,8 @@ def accuracy(effects: list[Effect]) -> dict[str, float]:
 UNITS = {
     "son hız": ("m/s", 1.0),
     "dönüş hızı (5° dümen)": ("°/s", np.degrees(1.0)),
+    "dönüş hızı (%50 itici)": ("°/s", np.degrees(1.0)),
+    "dikey hız (%50 itici)": ("m/s", 1.0),
     "yuvarlanma periyodu": ("s", 1.0),
     "yunuslama periyodu": ("s", 1.0),
     "net kaldırma": ("N", 1.0),

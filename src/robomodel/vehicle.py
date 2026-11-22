@@ -25,6 +25,21 @@ PRIMITIVES = {
 # Optional dimensions and their defaults.
 OPTIONAL_DIMS = {"myring": {"a_offset": 0.0, "c_offset": 0.0}}
 ORIGINS = ("center", "buoyancy")
+HYDRODYNAMICS = ("auto", "slender", "frame")
+AXIS_NAMES = ("x", "y", "z", "-x", "-y", "-z")
+
+
+def axes_matrix(axes: tuple[str, str, str]) -> np.ndarray:
+    """Rotation R with body = R @ file, from ('z', '-x', '-y')-style names."""
+    rows = []
+    for name in axes:
+        sign = -1.0 if name.startswith("-") else 1.0
+        row = np.zeros(3)
+        row["xyz".index(name[-1])] = sign
+        rows.append(row)
+    return np.array(rows)
+
+
 LENGTH_UNITS = {"m": 1.0, "mm": 1e-3, "cm": 1e-2}
 
 # Shapes for internal parts (batteries, electronics tubes); they set the part's own inertia.
@@ -59,6 +74,16 @@ class Geometry:
     # Body origin: "center" keeps primitives centred on their bounding box (mesh files keep
     # their own origin); "buoyancy" moves the origin to the centre of buoyancy.
     origin: str = "center"
+    # Body axis -> file axis, e.g. ("z", "-x", "-y"): body x is the file's z axis, body y is
+    # the file's -x axis... Must be a right-handed rotation.
+    axes: tuple[str, str, str] = ("x", "y", "z")
+    rotate: tuple[float, float, float] = (0.0, 0.0, 0.0)  # extra roll, pitch, yaw (deg)
+    # Multi-part CAD assembly (open-frame ROV): turned into one closed solid by voxels.
+    assembly: bool = False
+    voxel: float = 0.004  # m, voxel size for assemblies
+    # "slender": strip theory and Hoerner drag (torpedo AUVs); "frame": projected areas and
+    # an enclosing ellipsoid (open-frame ROVs). "auto": frame for assemblies or L/D < 2.
+    hydrodynamics: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -78,6 +103,7 @@ class Thruster:
     max_forward: float  # N, thrust at command +1
     max_reverse: float  # N (positive number), thrust magnitude at command -1
     preset: bool = False  # True if the limits come from THRUSTER_PRESETS, not the user
+    dead_band: float = 0.0  # fraction of the command range with no thrust (e.g. 0.05)
 
 
 @dataclass(frozen=True)
@@ -93,6 +119,7 @@ class Fin:
     area: float  # planform area of one fin, m^2
     span: float  # root to tip, m
     control: bool = False  # True: the fin can be turned (rudder, stern plane)
+    max_angle: float = np.radians(20.0)  # rad; beyond this the fin stalls (lift held flat)
 
 
 @dataclass(frozen=True)
@@ -101,6 +128,7 @@ class Measured:
 
     r_g: np.ndarray | None = None  # centre of gravity, m
     inertia_g: np.ndarray | None = None  # 3x3 inertia about the CG, kg m^2
+    volume: float | None = None  # displaced volume from weighing in water, m^3
 
 
 @dataclass(frozen=True)
@@ -114,6 +142,8 @@ class Calibration:
     added_mass: np.ndarray = field(default_factory=lambda: np.ones(6))  # diagonal of M_A
     fin_lift: float = 1.0
     body_lift: float = 1.0
+    thrust: float = 1.0  # all thrusters' force
+    thrust_sigma: float = 0.0
     damping_sigma: np.ndarray = field(default_factory=lambda: np.zeros(6))
     added_mass_sigma: np.ndarray = field(default_factory=lambda: np.zeros(6))
     fin_lift_sigma: float = 0.0
@@ -127,6 +157,7 @@ class Calibration:
             and np.allclose(self.added_mass, 1)
             and self.fin_lift == 1
             and self.body_lift == 1
+            and self.thrust == 1
         )
 
 
@@ -142,6 +173,8 @@ class Vehicle:
     fins: tuple[Fin, ...] = ()
     measured: Measured = field(default_factory=Measured)
     calibration: Calibration = field(default_factory=Calibration)
+    source: Path | None = None  # the YAML file it was read from, for provenance
+    current: np.ndarray = field(default_factory=lambda: np.zeros(3))  # NED, m/s
 
 
 def load_vehicle(path: str | Path) -> Vehicle:
@@ -149,7 +182,9 @@ def load_vehicle(path: str | Path) -> Vehicle:
     path = Path(path)
     with path.open(encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    return parse_vehicle(data, base_dir=path.parent)
+    from dataclasses import replace
+
+    return replace(parse_vehicle(data, base_dir=path.parent), source=path.resolve())
 
 
 def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
@@ -191,6 +226,9 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
     )
     measured = _measured(data.get("measured"), problems)
     calibration = _calibration(data.get("calibration"), problems)
+    current = np.zeros(3)
+    if "current" in data:
+        current = _vector(data["current"], "current", problems)
 
     if mass is not None and parts:
         parts_mass = sum(p.mass for p in parts)
@@ -212,6 +250,7 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         fins=fins,
         measured=measured,
         calibration=calibration,
+        current=current if current is not None else np.zeros(3),
     )
 
 
@@ -265,6 +304,50 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
     if origin not in ORIGINS:
         problems.append(f"'geometry.origin' must be one of {list(ORIGINS)}, got {origin!r}")
         return None
+    hydro = raw.get("hydrodynamics", "auto")
+    if hydro not in HYDRODYNAMICS:
+        problems.append(f"'geometry.hydrodynamics' must be one of {list(HYDRODYNAMICS)}")
+        return None
+    axes = raw.get("axes", ["x", "y", "z"])
+    if (
+        not isinstance(axes, list)
+        or len(axes) != 3
+        or not all(a in AXIS_NAMES for a in axes)
+        or abs(np.linalg.det(axes_matrix(tuple(axes))) - 1) > 1e-9
+    ):
+        problems.append(
+            "'geometry.axes' must be 3 of x, y, z, -x, -y, -z forming a "
+            f"right-handed rotation, got {axes!r}"
+        )
+        return None
+    assembly = raw.get("assembly", False)
+    if not isinstance(assembly, bool) or (assembly and not has_file):
+        problems.append("'geometry.assembly' must be true/false and needs a 'file'")
+        return None
+    voxel_mm = raw.get("voxel", 4.0)
+    if (
+        isinstance(voxel_mm, bool)
+        or not isinstance(voxel_mm, (int, float))
+        or not (0.5 <= voxel_mm <= 50)
+    ):
+        problems.append("'geometry.voxel' must be in millimetres, 0.5-50")
+        return None
+    rotate = raw.get("rotate", [0, 0, 0])
+    if (
+        not isinstance(rotate, list)
+        or len(rotate) != 3
+        or not all(isinstance(a, (int, float)) and not isinstance(a, bool) for a in rotate)
+    ):
+        problems.append("'geometry.rotate' must be [roll, pitch, yaw] in degrees")
+        return None
+    extra = dict(
+        origin=origin,
+        axes=tuple(axes),
+        rotate=tuple(float(a) for a in rotate),
+        assembly=assembly,
+        voxel=float(voxel_mm) / 1000,
+        hydrodynamics=hydro,
+    )
 
     if has_file:
         unit = raw.get("unit", "m")
@@ -275,7 +358,7 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
         if not file.is_file():
             problems.append(f"geometry file not found: {file}")
             return None
-        return Geometry(file=file, unit_scale=LENGTH_UNITS[unit], origin=origin)
+        return Geometry(file=file, unit_scale=LENGTH_UNITS[unit], **extra)
 
     kind = raw["primitive"]
     if kind not in PRIMITIVES:
@@ -294,7 +377,7 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
             problems.append(f"'geometry.{key}' must be a number >= 0, got {value!r}")
             return None
         dims[key] = float(value)
-    return Geometry(primitive=kind, dims=dims, origin=origin)
+    return Geometry(primitive=kind, dims=dims, **extra)
 
 
 def _part(raw: object, i: int, problems: list[str]) -> Part | None:
@@ -356,6 +439,14 @@ def _thruster(raw: object, i: int, problems: list[str]) -> Thruster | None:
         else:
             limits.append(default)
     uses_preset = preset is not None and "max_forward" not in raw and "max_reverse" not in raw
+    dead_band = raw.get("dead_band", 0.0)
+    if (
+        isinstance(dead_band, bool)
+        or not isinstance(dead_band, (int, float))
+        or not (0 <= dead_band < 0.5)
+    ):
+        problems.append(f"thrusters[{i}].dead_band must be a fraction 0-0.5, got {dead_band!r}")
+        return None
     if (
         not isinstance(model, str)
         or not model
@@ -371,6 +462,7 @@ def _thruster(raw: object, i: int, problems: list[str]) -> Thruster | None:
         max_forward=limits[0],
         max_reverse=limits[1],
         preset=uses_preset,
+        dead_band=dead_band,
     )
 
 
@@ -394,14 +486,30 @@ def _fin(raw: object, i: int, problems: list[str]) -> Fin | None:
         normal = normal / norm
     if any(v is None for v in (position, normal, area, span)):
         return None
-    return Fin(str(raw.get("name", f"fin{i}")), position, normal, area, span, control)
+    max_angle = raw.get("max_angle", 20.0)
+    if (
+        isinstance(max_angle, bool)
+        or not isinstance(max_angle, (int, float))
+        or not (0 < max_angle <= 45)
+    ):
+        problems.append(f"fins[{i}].max_angle must be in degrees, 0-45, got {max_angle!r}")
+        return None
+    return Fin(
+        str(raw.get("name", f"fin{i}")),
+        position,
+        normal,
+        area,
+        span,
+        control,
+        float(np.radians(max_angle)),
+    )
 
 
 def _measured(raw: object, problems: list[str]) -> Measured:
     if raw is None:
         return Measured()
     if not isinstance(raw, dict):
-        problems.append("'measured' must be a mapping (r_g, inertia_g)")
+        problems.append("'measured' must be a mapping (r_g, inertia_g, volume)")
         return Measured()
     r_g = _vector(raw["r_g"], "measured.r_g", problems) if "r_g" in raw else None
     inertia = None
@@ -417,7 +525,10 @@ def _measured(raw: object, problems: list[str]) -> Measured:
             problems.append("'measured.inertia_g' must be symmetric")
         else:
             inertia = value
-    return Measured(r_g=r_g, inertia_g=inertia)
+    volume = None
+    if "volume" in raw:
+        volume = _positive(raw["volume"], "measured.volume", problems)
+    return Measured(r_g=r_g, inertia_g=inertia, volume=volume)
 
 
 def _numeric(value: object) -> bool:
@@ -443,7 +554,14 @@ def _calibration(raw: object, problems: list[str]) -> Calibration:
                 problems.append(f"'calibration.{key}' must be 6 numbers (scales > 0)")
             else:
                 values[key] = arr
-    for key in ("fin_lift", "body_lift", "fin_lift_sigma", "body_lift_sigma"):
+    for key in (
+        "fin_lift",
+        "body_lift",
+        "thrust",
+        "fin_lift_sigma",
+        "body_lift_sigma",
+        "thrust_sigma",
+    ):
         if key in raw:
             v = raw[key]
             ok = isinstance(v, (int, float)) and not isinstance(v, bool)

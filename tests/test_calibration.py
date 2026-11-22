@@ -177,3 +177,97 @@ def test_wizard_measured_values_drop_down_the_list(cad):
         return names.index("kütle merkezi yüksekliği")
 
     assert rank(measured) > rank(cad)
+
+
+# --- Gaps closed after review ------------------------------------------------
+
+
+def rov():
+    """Four-thruster ROV: two forward (differential yaw) and two vertical."""
+    thr = {"model": "x", "max_forward": 40, "max_reverse": 30}
+    return parse_vehicle({
+        "name": "rov", "category": "underwater", "mass": 21.2, "water": "fresh",
+        "geometry": {"primitive": "ellipsoid", "a": 0.25, "b": 0.17, "c": 0.12},
+        "parts": [{"mass": 3.0, "position": [0, 0, 0.05]}],
+        "thrusters": [
+            dict(thr, position=[-0.2, 0.12, 0], direction=[1, 0, 0]),
+            dict(thr, position=[-0.2, -0.12, 0], direction=[1, 0, 0]),
+            dict(thr, position=[0, 0.12, 0], direction=[0, 0, 1]),
+            dict(thr, position=[0, -0.12, 0], direction=[0, 0, 1]),
+        ],
+    })  # fmt: skip
+
+
+def test_wizard_covers_rov_turn_and_dive():
+    from robomodel.wizard import analyse
+
+    base, _ = analyse(build_model(rov()))
+    assert base["dönüş hızı (%50 itici)"] > 0
+    assert base["dikey hız (%50 itici)"] > 0  # pushing down (z positive)
+
+
+def test_calibration_recovers_thrust_and_damping_together(cad):
+    """Steady speed alone mixes thrust and damping; the coast-down separates them."""
+    truth = apply_calibration(cad, Calibration(damping=np.array([3.0, 1, 1, 1, 1, 1]), thrust=0.8))
+    result = calibrate(cad, [surge_log(truth)], groups=("damping", "thrust"))
+    assert result.calibration.thrust == pytest.approx(0.8, rel=0.1)
+    assert result.calibration.damping[0] == pytest.approx(3.0, rel=0.1)
+
+
+def test_fin_deflection_is_limited_by_stall():
+    from robomodel.dynamics import fin_control_force
+
+    v = parse_vehicle(
+        dict(
+            VEHICLE,
+            fins=[
+                {
+                    "name": "r",
+                    "position": [-0.7, 0, -0.14],
+                    "normal": [0, 1, 0],
+                    "area": 0.0066,
+                    "span": 0.08,
+                    "control": True,
+                    "max_angle": 15,
+                }
+            ],
+        )
+    )
+    dyn = build_model(v).dynamics()
+    nu = np.array([1.5, 0, 0, 0, 0, 0])
+    at_limit = fin_control_force(dyn, nu, [np.radians(15)])
+    np.testing.assert_allclose(fin_control_force(dyn, nu, [1.0]), at_limit)
+    with pytest.raises(ValueError, match="max_angle"):
+        parse_vehicle(
+            dict(
+                VEHICLE,
+                fins=[
+                    {
+                        "position": [0, 0, 0],
+                        "normal": [0, 1, 0],
+                        "area": 0.01,
+                        "span": 0.1,
+                        "max_angle": 90,
+                    }
+                ],
+            )
+        )
+
+
+def test_hull_along_the_wrong_axis_is_warned(tmp_path):
+    import trimesh
+
+    path = tmp_path / "tall.stl"
+    trimesh.creation.cylinder(radius=0.1, height=1.5).export(path)  # long axis z
+    model = build_model(
+        parse_vehicle(
+            {"name": "t", "category": "underwater", "mass": 47, "geometry": {"file": str(path)}}
+        )
+    )
+    assert any("longest along body z" in w for w in model.warnings)
+
+
+def test_check_shows_fins_measured_and_calibration(capsys):
+    assert main(["check", str(EXAMPLES / "remus100.yaml")]) == 0
+    out = capsys.readouterr().out
+    assert "4 (4 control)" in out and "r_g, inertia_g" in out and "calibration   none" in out

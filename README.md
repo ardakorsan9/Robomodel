@@ -1,126 +1,152 @@
 # robomodel
 
-Robotun CAD dosyasından ve kısa bir araç tanımından matematiksel modelini (Fossen 6 serbestlik
-dereceli) çıkaran yazılım. İlk hedef sualtı araçları. Mimari sonradan rover ve drone gibi
-kategorilere genişletilebilecek şekilde kuruldu.
+**CAD file in, ready-to-use mathematical model out.** robomodel turns a vehicle's CAD (STL or
+STEP) and a few numbers (mass, thrusters, fins) into a 6-degree-of-freedom Fossen model:
 
-Her parametre değeri, belirsizliği ve kaynağıyla (ölçülmüş, kalibre edilmiş, BEM, ampirik)
-birlikte tutulacak. Böylece rapor hangi değere güvenilebileceğini açıkça söyler.
-
-## Kurulum
-
-İlk seferde, proje klasöründe:
-
-```bash
-cd ~/projects/robomodel && uv sync
+```
+M ν̇ + C(ν) ν + D(ν) ν + g(η) = τ,   M = M_RB + M_A
 ```
 
-## Kullanım
+with MATLAB, Simulink and Gazebo files, automatic sanity checks, and an honest statement of how
+far each number can be trusted. First target: underwater vehicles (torpedo AUVs and open-frame
+ROVs). Other robot types (rovers, drones, arms) share the same core and are planned.
 
-Araç tanım dosyasını kontrol et:
+Türkçe kılavuz: [docs/KILAVUZ.md](docs/KILAVUZ.md)
 
-```bash
-uv run robomodel check examples/sphere.yaml
-```
+## What comes out of the CAD, and how good it is
 
-Modeli hesapla ve raporu göster (`-o` ile tüm parametreleri YAML olarak kaydeder):
+Some terms follow from geometry exactly; others (mostly damping) depend on turbulence and cannot.
+robomodel computes everything it can, and for the rest gives a best estimate **plus low/high
+bounds** taken from vehicles we validated against measurements (REMUS 100, BlueROV2 Heavy).
 
-```bash
-uv run robomodel build examples/test_auv.yaml -o test_auv_model.yaml
-```
+| Term | From CAD | Accuracy shown in validation |
+|---|---|---|
+| Volume, buoyancy, centre of buoyancy | exact for a closed CAD | 1–4 % (REMUS); open frames: weigh in water |
+| Mass properties (CG, inertia) | from the hull + heavy parts you list | as good as the parts list; measured values override |
+| Added mass M_A | Lamb (ellipsoids, exact), strip theory, enclosing ellipsoid (frames) | 7–13 % vs theory for crossflow terms |
+| Coriolis C(ν) | exact from M | – |
+| Restoring forces g(η) | exact | – |
+| Fin and hull lift | Helmbold / Hoerner | 0–11 % vs published formulas |
+| Thruster allocation | exact from positions and directions | – |
+| **Damping D(ν)** | handbook estimate only | **1.6–10× too low** in two vehicles: use the range or calibrate |
 
-MATLAB dosyalarını üret (`--speed`: doğrusal modelin çalışma noktasındaki ileri hız, m/s):
+So: geometry-driven behaviour (stability, trim, how thrusters act) is reliable from CAD alone;
+speeds and turning rates need either the low/high range in simulation or one pool test and
+`robomodel calibrate`. Full reports: [REMUS 100](docs/dogrulama_remus100.md),
+[BlueROV2 Heavy](docs/dogrulama_bluerov2.md), [calibration](docs/dogrulama_kalibrasyon.md).
 
-```bash
-uv run robomodel matlab examples/test_auv.yaml -o ~/veri/kayitlar/robomodel/test_auv_matlab --speed 1.0
-```
+## Install
 
-Ölçüm sihirbazı: hangi ölçüm modeli en çok iyileştirir?
-
-```bash
-uv run robomodel wizard examples/test_auv.yaml
-```
-
-Havuz test planı (CSV şablonları ve Türkçe talimat):
-
-```bash
-uv run robomodel testplan examples/test_auv.yaml -o ~/veri/kayitlar/robomodel/test_plani
-```
-
-Testlerden sonra kalibrasyon (sonuç `<arac>_calibrated.yaml`; `build` ve `matlab` ile kullanılır):
-
-```bash
-uv run robomodel calibrate examples/test_auv.yaml kayit1.csv kayit2.csv --validate kontrol.csv
-```
-
-MATLAB'da o klasöre geçip `test_auv_example` çalıştır. Simülasyonu yapar, Python sonucuyla
-karşılaştırır ve grafiği çizer. Kontrolcü tasarımı için `test_auv_linear.mat` içindeki
-`A`, `B` matrislerini kullan.
-
-Testleri çalıştır:
+Python 3.12+. Tested on Linux (Ubuntu 24.04 / WSL2). All dependencies are ordinary Python
+wheels that also exist for Windows and macOS, but those platforms are not tested yet.
 
 ```bash
-uv run pytest
+pip install -e .
 ```
 
-## Dosyalar
+or with [uv](https://docs.astral.sh/uv/):
 
-| Dosya | İş |
-|---|---|
-| `src/robomodel/vehicle.py` | Araç tanım dosyasını (YAML) okur ve doğrular |
-| `src/robomodel/parameter.py` | `Parameter`: değer, belirsizlik, kaynak |
-| `src/robomodel/geometry.py` | Küre, elipsoit, silindir, Myring ağları; STL/OBJ okuma |
-| `src/robomodel/rigid_body.py` | Kütle merkezi, eylemsizlik, M_RB |
-| `src/robomodel/hydrostatics.py` | Hacim, kaldırma merkezi, W, B, g(η) |
-| `src/robomodel/sections.py` | Gövdeyi x boyunca dilimler (genişlik, yükseklik, alan) |
-| `src/robomodel/added_mass.py` | Eklenmiş kütle: elipsoitte Lamb (kesin), diğer gövdelerde şerit teorisi |
-| `src/robomodel/damping.py` | Sönümleme tahmini (Hoerner): doğrusal + karesel |
-| `src/robomodel/thrusters.py` | İtici eğrisi ve dağıtım matrisi B |
-| `src/robomodel/fins.py` | Kanatlar: kaldırma (Helmbold), eklenmiş kütle, dümen girişi |
-| `src/robomodel/body_lift.py` | Uzun gövdelerde gövde kaldırması (Hoerner) |
-| `src/robomodel/calibration.py` | Test kayıtlarından kalibrasyon (MAP uydurma, belirsizlikle) |
-| `src/robomodel/testplan.py` | Havuz test planı ve CSV şablonları |
-| `src/robomodel/wizard.py` | Ölçüm sihirbazı: belirsizliğin davranışa etkisi, ölçüm sırası |
-| `src/robomodel/dynamics.py` | Fossen 6-DOF denklemleri, simülatör, doğrusallaştırma |
-| `src/robomodel/matlab_export.py` | MATLAB dosyaları |
-| `src/robomodel/model.py` | Hepsini birleştirir, rapor ve YAML çıktısı |
-| `src/robomodel/cli.py` | Komut satırı (`check`, `build`, `matlab`) |
-| `examples/*.yaml` | Küre, elipsoit (L/D = 5), REMUS gövdesi, basit AUV |
-| `tests/test_physics.py` | Geometri, kütle, hidrostatik, Lamb: analitik cevaplara karşı |
-| `tests/test_dynamics.py` | Şerit teorisi, sönümleme, iticiler, kanatlar, simülatör, MATLAB |
-| `tests/test_remus_validation.py` | REMUS 100: Prestero 2001 ile gösterilen uyumu korur |
-| `validation/remus100.py` | REMUS 100 karşılaştırması; `docs/dogrulama_remus100.md` raporunu yazar |
-| `docs/dogrulama_remus100.md` | REMUS 100 doğrulama raporu |
-| `validation/calibration_remus.py` | Sanal havuz: kalibrasyonun bilinen gerçeği geri bulması |
-| `docs/dogrulama_kalibrasyon.md` | Kalibrasyon doğrulama raporu |
-| `tests/test_calibration.py` | Kalibrasyon, test planı, sihirbaz, komut satırı |
-| `docs/eksenler.md` | Eksen ve işaret kuralları. Kod yazmadan önce oku |
-| `docs/plan.md` | Fazlar, saat tahminleri, doğrulama merdiveni |
+```bash
+uv sync
+```
 
-## Araç tanım dosyası
+## Use it in the browser
+
+```bash
+robomodel serve
+```
+
+Open http://127.0.0.1:8000, upload the CAD, check the axes in the 3D view (red = forward,
+blue = down), enter the mass, click thrusters and fins onto the hull, press **Build model** and
+download a zip with everything below.
+
+## Use it from the command line
+
+Describe the vehicle in a short YAML file (all positions in metres, body frame: x forward,
+y right, z down):
 
 ```yaml
-name: test_auv
-category: underwater        # şimdilik tek kategori
-mass: 31.0                  # kg, toplam
-water: fresh                # sea (1025), fresh (1000) ya da kg/m^3
+name: my_auv
+category: underwater
+mass: 18.0                     # kg, weighed
+water: fresh                   # fresh (1000), sea (1025) or a density in kg/m^3
 geometry:
-  primitive: cylinder       # sphere, ellipsoid, cylinder, myring ya da file: govde.stl
-  length: 1.6
-  radius: 0.095
-parts:                      # isteğe bağlı: ağır iç parçalar
-  # shape: point (varsayılan), sphere (radius), box (size), cylinder (radius, length, axis)
-  - {name: battery, mass: 6.0, position: [0.1, 0.0, 0.04], shape: box, size: [0.3, 0.1, 0.06]}
+  file: hull.stl               # STL or STEP
+  unit: mm
+  axes: [x, y, z]              # body axis <- file axis, e.g. [z, -x, -y]
+  # assembly: true             # multi-part / open-frame CAD (ROV)
+parts:                         # heavy internal parts: they set CG and inertia
+  - {name: battery, mass: 3.0, position: [0.1, 0, 0.05], shape: box, size: [0.2, 0.08, 0.06]}
 thrusters:
-  # T200 için itki sınırları hazır (kontrol edilmeli); başka modelde max_forward/max_reverse ver (N)
-  - {model: T200, position: [-0.85, 0.0, 0.0], direction: [1, 0, 0]}
-fins:                       # isteğe bağlı: kanat, dümen, derinlik dümeni
-  # normal: kanadın suyu ittiği yön; control: true ise açısı değiştirilebilir (dümen)
-  - {name: rudder_top, position: [-0.7, 0, -0.14], normal: [0, 1, 0], area: 0.0066, span: 0.08, control: true}
-# calibration: robomodel calibrate bu bloğu yazar (CAD değerine göre çarpanlar)
-measured:                   # isteğe bağlı: araç üzerinde ölçülen değerler CAD tahmininin yerine geçer
-  r_g: [0.0, 0.0, 0.02]     # denge testiyle kütle merkezi, m
-  inertia_g: [0.18, 3.4, 3.4]   # sarkaç testiyle eylemsizlik (kütle merkezi etrafında), kg m^2
+  - {model: T200, position: [-0.5, 0.1, 0], direction: [1, 0, 0]}
+  - {model: T200, position: [-0.5, -0.1, 0], direction: [1, 0, 0], dead_band: 0.05}
+fins:                          # optional; control: true = rudder / stern plane
+  - {name: rudder, position: [-0.45, 0, -0.1], normal: [0, 1, 0], area: 0.006, span: 0.08,
+     control: true, max_angle: 20}
+measured:                      # optional, overrides CAD estimates
+  volume: 0.0181               # m^3, weighing in water
+  r_g: [0.0, 0.0, 0.01]        # m
+current: [0.2, 0, 0]           # optional water current, NED, m/s
 ```
 
-Konumlar gövde ekseninde, metre cinsinden: x ileri, y sağ, z aşağı.
+```bash
+robomodel build my_auv.yaml          # report + automatic checks
+robomodel matlab my_auv.yaml -o out  # MATLAB: low / nominal / high + Simulink builder
+robomodel gazebo my_auv.yaml -o gz   # Gazebo (gz-sim) model and water world
+robomodel wizard my_auv.yaml         # which measurement would improve the model most
+robomodel testplan my_auv.yaml -o plan    # pool tests (CSV templates)
+robomodel calibrate my_auv.yaml run1.csv run2.csv --validate run3.csv
+```
+
+## Outputs
+
+| Output | Contents |
+|---|---|
+| `<name>_params.m`, `_low.m`, `_high.m` | All matrices; nominal and the two range bounds |
+| `robomodel_dynamics.m`, `robomodel_thrust.m` | ẋ = f(x, τ), thruster commands → τ (current, fin stall, dead band included) |
+| `<name>_example.m` | ode45 run of all three models, compared with the Python simulator |
+| `<name>_linear*.mat` | A, B at the cruise speed, for `lqr` / `pidtune` |
+| `<name>_build_simulink.m` | Builds `<name>_sim.slx` (τ in, state out); first build and compile take ~3 min |
+| `gazebo/<name>/model.sdf`, `world.sdf` | Hydrodynamics + Thruster plugins, buoyancy volume, test world |
+| report, `model.yaml` | Every value with uncertainty and source, checks, provenance (version, input hashes) |
+
+Every model passes automatic checks before you use it: mass matrices symmetric and positive
+definite, Coriolis does no work, damping only removes energy (also in a free-motion
+simulation), self-righting, neutral buoyancy, stability at rest and at cruise speed.
+
+## Verified
+
+- 166 automatic tests against analytic results (sphere, ellipsoids, Lamb coefficients, energy
+  conservation, terminal speed, roll period, current drift) and of every output.
+- MATLAB R2025b: `ode45` against the Python simulator, largest state difference ≤ 10⁻⁸;
+  the generated Simulink model ≤ 10⁻⁴ over 30 s (final speeds equal to 5 digits).
+- Gazebo against the Python model: steady speed within 0.04 %.
+- Odd CAD: open shells, duplicated or inverted faces, solids inside solids, tori, thin plates,
+  catamarans, scans, 1 cm–20 m, tilted drawings, far-away origins are repaired or flagged
+  (`tests/test_robustness.py`); the model does not depend on where the CAD origin is.
+- REMUS 100 against Prestero (2001) and sea trials; BlueROV2 Heavy against von Benzon et al.
+  (2022) pool identification.
+
+## Limits
+
+- Damping cannot come from CAD: use the low/high range or calibrate with one pool test.
+- CAD volume of an open frame is ±30 %: weigh the vehicle in water (`measured.volume`).
+- Large STEP assemblies are slow to load (BlueROV2: 2.5 min, 6 GB RAM); export STL if possible.
+- Gazebo: control-fin deflections and the water current are not exported yet.
+- Only underwater vehicles so far.
+
+## Project layout
+
+| Path | What |
+|---|---|
+| `src/robomodel/vehicle.py` | Vehicle file schema and validation |
+| `src/robomodel/geometry.py`, `voxel.py`, `sections.py` | CAD loading, voxel hulls, cross-sections |
+| `src/robomodel/rigid_body.py`, `hydrostatics.py` | M_RB, CG, inertia, buoyancy, g(η) |
+| `src/robomodel/added_mass.py`, `damping.py`, `frame.py`, `fins.py`, `body_lift.py` | Hydrodynamics |
+| `src/robomodel/thrusters.py`, `dynamics.py` | Thrusters, equations of motion, simulator, linearisation |
+| `src/robomodel/checks.py`, `model_range.py`, `provenance.py` | Checks, low/high bounds, version stamps |
+| `src/robomodel/matlab_export.py`, `gazebo_export.py` | Outputs |
+| `src/robomodel/calibration.py`, `testplan.py`, `wizard.py` | Pool tests and calibration |
+| `src/robomodel/web.py`, `static/index.html` | Web app |
+| `validation/` | REMUS 100, BlueROV2 and calibration studies (write the reports in `docs/`) |
+| `docs/eksenler.md`, `docs/plan.md` | Axis conventions, project plan |

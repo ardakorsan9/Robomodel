@@ -19,6 +19,7 @@ from __future__ import annotations
 import numpy as np
 
 from robomodel.parameter import Parameter, Source
+from robomodel.rigid_body import velocity_transform
 from robomodel.sections import Sections
 
 HOERNER_CY_PER_DEG = 0.003
@@ -27,7 +28,8 @@ MIN_LD = 3.0  # below this the hull is not slender and the formula does not appl
 REL_SIGMA = 0.5
 
 
-def body_lift(sections: Sections, nose_x: float, rho: float) -> Parameter | None:
+def body_lift(sections: Sections, nose_x: float, rho: float,
+              centre=(0.0, 0.0, 0.0)) -> Parameter | None:
     """Body lift matrix (multiply by |u|), or None for a stubby hull."""
     frontal = float(sections.area.max())
     d = 2 * np.sqrt(frontal / np.pi)
@@ -39,10 +41,14 @@ def body_lift(sections: Sections, nose_x: float, rho: float) -> Parameter | None
     x_cp = nose_x - CENTRE_OF_PRESSURE * sections.length
 
     m = np.zeros((6, 6))
-    r = np.array([x_cp, 0.0, 0.0])
+    centre = np.asarray(centre, dtype=float)
+    r = np.array([x_cp, centre[1], centre[2]])  # on the hull's axis
+    # The sideslip is measured at the hull centre: velocity there = H nu. This keeps the
+    # force independent of where the CAD origin is.
+    h_centre = velocity_transform(centre)
     for axis, n in ((1, np.array([0.0, 1.0, 0.0])), (2, np.array([0.0, 0.0, 1.0]))):
         h = np.concatenate([n, np.cross(r, n)])
-        m[:, axis] += k * h
+        m += k * np.outer(h, h_centre[axis])
     note = (
         f"Hoerner body lift: c_yd_beta = {c_yd_beta:.3g}, centre of pressure x = {x_cp:.3g} m; "
         "methods disagree widely (Prestero 2001), measure if it matters"

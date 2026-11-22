@@ -207,6 +207,29 @@ verisi gerekir.
 yuvarlanma/yunuslama periyodu ve net kaldırmaya etkisine göre sıralanır, her biri için en
 ucuz ölçüm önerilir. Ölçülen değerler kendiliğinden listenin altına iner.
 
-**Kalan isteğe bağlılar:** O1 Gazebo çıktısı, O2 Capytaine (BEM), O5'in ikinci basamağı
-BlueROV2, O7 diğer robot kategorileri. Ayrıca X_udot ve M_qdot farkının nedeni. Kalibrasyonun ilk testi şu olabilir: Prestero'nun deniz verisine
+**Gözden geçirmede bulunup kapatılan eksikler (2026-11-22):**
+- Uzun ekseni x'te olmayan CAD dosyası için uyarı (şerit teorisi ve sönüm aksi halde yanlış).
+- Kanat açısı sınırı (`max_angle`, varsayılan 20°; stall yaklaşıklığı), MATLAB'da da.
+- Kalibrasyonda `thrust` grubu: yanlış itki verisi sönüme yüklenmesin.
+- Kalibrasyon ilerleme çıktısı; sihirbazda ROV metrikleri (itici ile dönüş ve dikey hız);
+  `check` kanatları, ölçülen değerleri ve kalibrasyonu gösteriyor.
+
+**O5 ikinci basamak, BlueROV2 Heavy (tamam):** `docs/dogrulama_bluerov2.md`. Açık kasa için
+voksel gövde (`assembly: true`), eksen döndürme (`axes`), çerçeve hidrodinamiği ve
+`measured.volume` eklendi. Sonuç: izdüşüm alanları makalenin CAD değerleriyle ±%6; CAD hacmi
++%38 (suda tartmak şart); havuzda ölçülen sönüme göre bizim C_D = 1,1 tahminimiz 1,6–4,6 kat
+düşük (makaledeki değerler izdüşüm alanına göre C_D ≈ 1,9–3,8 demek); 85 N'de son hız +%71.
+REMUS ile aynı ders: sönüm CAD'den çıkmıyor, kalibrasyon şart.
+
+**Kullanıma hazırlık (2026-11-22):** otomatik matematik kontrolleri (`checks.py`), alt/orta/üst
+model aralığı (`model_range.py`, REMUS ve BlueROV2 hatalarından), sürüm ve girdi damgası
+(`provenance.py`), akıntı (Fossen bağıl hız), itici ölü bölgesi, STEP (cascadio), Gazebo
+çıktısı (Gazebo'da son hız Python'la %0,04), Simulink kurucu betik (Python'la ≤1e-4), web
+uygulaması (`robomodel serve`: yükle, 3B önizleme, tıklayarak itici/kanat, zip indir),
+İngilizce README ve Türkçe kılavuz. 149 test.
+
+**Kalan (veri gerektirmeyen):** Capytaine (BEM) ile her şekil için eklenmiş kütle; web
+arayüzünü gerçek tarayıcıda uçtan uca deneme; Windows/macOS kurulum denemesi; Gazebo'ya
+akıntı ve dümen komutları; diğer robot kategorileri (O7); internete yayın (sunucu, sınırlar).
+**Veri gerektiren:** gerçek araçla havuz testi ve kalibrasyon. Kalibrasyonun ilk testi şu olabilir: Prestero'nun deniz verisine
 benzeyen sentetik veriden sönümü geri bulmak.

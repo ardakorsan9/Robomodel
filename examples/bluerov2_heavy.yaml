@@ -1,0 +1,21 @@
+# BlueROV2 Heavy (8 x T200), compared with von Benzon et al. (2022), "An Open-Source
+# Benchmark Simulator: Control of a BlueROV2 Underwater Robot", J. Mar. Sci. Eng. 10, 1898,
+# Table A1. Used by validation/bluerov2.py.
+#
+# The CAD assembly is Blue Robotics' public BROV2-HEAVY-ASM-BROV2-HEAVY-R1.STL (309 MB, not in
+# this repository): download it from bluerobotics.com and put it at the path below.
+name: bluerov2_heavy
+category: underwater
+mass: 13.5                 # kg (Table A1, experimental)
+water: fresh               # pool, rho = 1000
+geometry:
+  file: data/bluerov2/BROV2-HEAVY-ASM-BROV2-HEAVY-R1.STL
+  unit: mm
+  axes: [z, -x, -y]        # file z is forward, file y is up (checked from the CAD views)
+  assembly: true           # 1142 parts, open frame
+  voxel: 4                 # mm
+  origin: buoyancy
+measured:                  # Table A1: origin at the CG, centre of buoyancy 1 cm above it
+  volume: 0.0134           # m^3, experimental
+  r_g: [0.0, 0.0, 0.01]    # CG 1 cm below the centre of buoyancy
+  inertia_g: [0.26, 0.23, 0.37]   # from CAD in the paper

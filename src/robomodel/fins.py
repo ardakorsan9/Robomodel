@@ -9,13 +9,14 @@ In generalised coordinates h = [n; r x n] gives v_n = h . nu and tau = h F_n, so
     passive part:  tau = -|u| D_fin nu,  D_fin = sum k h h^T   (speed-dependent damping)
     control part:  tau = u|u| B_fin delta,  B_fin column = k h  (per radian of deflection)
 
-This is the small-angle lift-slope model used for torpedo AUVs (e.g. Prestero 2001); it
-ignores stall, fin-fin interference and the hull's own lift.
+This is the small-angle lift-slope model used for torpedo AUVs (e.g. Prestero 2001). Stall
+is approximated by holding the commanded deflection at the fin's max_angle (default 20 deg);
+fin-fin interference is ignored.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -33,6 +34,7 @@ class FinModel:
     m_a: np.ndarray  # 6x6 added mass of all fins
     lift_slopes: np.ndarray  # C_L_alpha per fin, 1/rad
     control_names: tuple[str, ...]
+    max_angles: np.ndarray = field(default_factory=lambda: np.zeros(0))  # rad, control fins
 
 
 def generalised_direction(fin: Fin) -> np.ndarray:
@@ -58,7 +60,7 @@ def fin_added_mass(fin: Fin, rho: float) -> float:
 def fin_model(fins: tuple[Fin, ...], rho: float) -> FinModel:
     d = np.zeros((6, 6))
     m_a = np.zeros((6, 6))
-    control_cols, names, slopes = [], [], []
+    control_cols, names, slopes, limits = [], [], [], []
     for fin in fins:
         h = generalised_direction(fin)
         cla = lift_slope(effective_aspect_ratio(fin))
@@ -69,12 +71,14 @@ def fin_model(fins: tuple[Fin, ...], rho: float) -> FinModel:
         if fin.control:
             control_cols.append(k * h)
             names.append(fin.name)
+            limits.append(fin.max_angle)
     b = np.column_stack(control_cols) if control_cols else np.zeros((6, 0))
-    note = "fin lift: Helmbold lift slope, small angles, no stall or fin-fin interference"
+    note = "fin lift: Helmbold slope; deflection held at max_angle (stall); no fin interference"
     return FinModel(
         d_fin=Parameter(d, np.abs(d) * LIFT_REL_SIGMA, Source.EMPIRICAL, "N s/m (x |u|)", note),
         b_fin=b,
         m_a=m_a,
         lift_slopes=np.array(slopes),
         control_names=tuple(names),
+        max_angles=np.array(limits),
     )

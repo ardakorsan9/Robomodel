@@ -21,17 +21,29 @@ class Hydrostatics:
     buoyancy: Parameter  # B = rho g V, N
 
 
-def hydrostatics(hull: trimesh.Trimesh, mass: Parameter, water_density: float) -> Hydrostatics:
+MEASURED_VOLUME_REL_SIGMA = 0.005  # weighing in water with a luggage scale
+
+
+def hydrostatics(
+    hull: trimesh.Trimesh,
+    mass: Parameter,
+    water_density: float,
+    measured_volume: float | None = None,
+) -> Hydrostatics:
     volume = float(hull.volume)
     note = "built vehicle may differ from CAD; check by weighing in water"
+    source, rel = Source.CAD, CAD_VOLUME_REL_SIGMA
+    if measured_volume is not None:
+        volume, source, rel = measured_volume, Source.MEASURED, MEASURED_VOLUME_REL_SIGMA
+        note = f"measured (CAD gave {float(hull.volume):.4g} m^3)"
     cob_sigma = np.full(3, CAD_VOLUME_REL_SIGMA * float(np.max(hull.extents)) / 2)
     weight = mass.value * GRAVITY
     buoyancy = water_density * GRAVITY * volume
     return Hydrostatics(
-        volume=Parameter.relative(volume, CAD_VOLUME_REL_SIGMA, Source.CAD, "m^3", note),
+        volume=Parameter.relative(volume, rel, source, "m^3", note),
         r_b=Parameter(np.asarray(hull.center_mass, dtype=float), cob_sigma, Source.CAD, "m"),
         weight=Parameter(weight, mass.sigma * GRAVITY, mass.source, "N"),
-        buoyancy=Parameter.relative(buoyancy, CAD_VOLUME_REL_SIGMA, Source.CAD, "N", note),
+        buoyancy=Parameter.relative(buoyancy, rel, source, "N", note),
     )
 
 

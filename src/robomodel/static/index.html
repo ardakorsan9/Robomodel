@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>robomodel – CAD to mathematical model</title>
+<style>
+  :root { --bg:#f6f7f9; --panel:#fff; --ink:#1c2430; --muted:#5f6b7a; --line:#dde2e8;
+          --accent:#1f6feb; --ok:#1a7f37; --warn:#9a6700; --fail:#cf222e; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         color:var(--ink); background:var(--bg); display:grid;
+         grid-template-columns: 420px 1fr; height:100vh; }
+  aside { background:var(--panel); border-right:1px solid var(--line); overflow:auto; padding:16px 18px; }
+  main { position:relative; display:grid; grid-template-rows: 1fr auto; min-width:0; }
+  h1 { font-size:18px; margin:0 0 2px; } .sub { color:var(--muted); margin:0 0 14px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted);
+       margin:18px 0 8px; border-top:1px solid var(--line); padding-top:12px; }
+  label { display:block; margin:6px 0 2px; color:var(--muted); font-size:12px; }
+  input, select { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px;
+                  font:inherit; background:#fff; }
+  .row { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+  .row3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; }
+  button { padding:7px 12px; border:1px solid var(--line); border-radius:6px; background:#fff;
+           font:inherit; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); width:100%;
+                   padding:10px; font-weight:600; margin-top:14px; }
+  button.active { background:#eaf2ff; border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  .tools { display:flex; gap:6px; flex-wrap:wrap; }
+  .hint { color:var(--muted); font-size:12px; margin:6px 0; }
+  .item { border:1px solid var(--line); border-radius:8px; padding:8px; margin:6px 0; }
+  .item header { display:flex; justify-content:space-between; align-items:center; font-weight:600; }
+  .item header button { padding:2px 8px; }
+  #view { width:100%; height:100%; display:block; background:#eef1f5; }
+  #legend { position:absolute; top:10px; right:12px; background:rgba(255,255,255,.9);
+            border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:12px; }
+  #legend b.x { color:#d22; } #legend b.y { color:#1a8f2a; } #legend b.z { color:#2550d8; }
+  #result { position:absolute; top:0; right:0; bottom:0; width:min(820px, 72%); overflow:auto;
+            background:var(--panel); border-left:1px solid var(--line); padding:18px 22px;
+            box-shadow:-8px 0 24px rgba(0,0,0,.08); display:none; z-index:5; }
+  #result h3 { margin:0 0 4px; font-size:18px; }
+  #result .close { position:sticky; top:0; float:right; font-size:18px; padding:2px 10px; }
+  #result table { border-collapse:collapse; width:100%; margin:6px 0 4px; font-size:13px; }
+  #result th, #result td { border-bottom:1px solid var(--line); padding:5px 6px; text-align:right;
+                           font-variant-numeric: tabular-nums; }
+  #result th:first-child, #result td:first-child { text-align:left; }
+  #result th { color:var(--muted); font-weight:600; background:#f8f9fb; }
+  .src { color:var(--muted); font-size:11px; }
+  .eq { background:#f3f5f8; border-radius:6px; padding:6px 10px; font-family:ui-monospace, monospace; }
+  .badge { display:inline-block; min-width:44px; text-align:center; border-radius:10px; padding:0 6px;
+           font-size:11px; font-weight:600; margin-right:6px; }
+  .badge.ok { background:#dafbe1; } .badge.warn { background:#fff8c5; } .badge.fail { background:#ffebe9; }
+  .check { margin:2px 0; } .ok { color:var(--ok); } .warn { color:var(--warn); } .fail { color:var(--fail); }
+  pre { background:#f3f5f8; padding:10px; border-radius:6px; overflow:auto; font-size:12px; }
+  #status { margin-top:8px; font-size:12px; color:var(--muted); min-height:1.4em; }
+  .err { color:var(--fail); white-space:pre-wrap; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<aside>
+  <h1>robomodel</h1>
+  <p class="sub">CAD → 6-DOF mathematical model (Fossen) for MATLAB, Simulink and Gazebo.</p>
+
+  <button id="example" style="width:100%">Try an example (REMUS 100 hull)</button>
+  <h2>1. CAD file</h2>
+  <input type="file" id="cad" accept=".stl,.step,.stp,.obj,.ply">
+  <div class="hint">STL or STEP. A multi-part assembly (open-frame ROV) is fine: tick "assembly".</div>
+  <div class="hint" id="sizeinfo"></div>
+  <div class="row">
+    <div><label>File units</label>
+      <select id="unit"><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option></select></div>
+    <div><label>Hydrodynamics</label>
+      <select id="hydro"><option value="auto">auto</option><option value="slender">slender (torpedo)</option><option value="frame">frame (box-like ROV)</option></select></div>
+  </div>
+  <div class="row">
+    <div><label>Forward is file axis</label><select id="fwd"></select></div>
+    <div><label>Up is file axis</label><select id="up"></select></div>
+  </div>
+  <div class="row">
+    <div><label><input type="checkbox" id="assembly" style="width:auto"> assembly (many parts)</label></div>
+    <div><label>Voxel size (mm)</label><input id="voxel" type="number" value="4" min="0.5" step="0.5"></div>
+  </div>
+
+  <h2>2. Vehicle</h2>
+  <div class="row">
+    <div><label>Name</label><input id="name" value="my_vehicle"></div>
+    <div><label>Mass (kg)</label><input id="mass" type="number" step="0.01" placeholder="weighed mass"></div>
+  </div>
+  <div class="row">
+    <div><label>Water</label><select id="water"><option value="fresh">fresh (1000)</option><option value="sea">sea (1025)</option></select></div>
+    <div><label>Cruise speed (m/s)</label><input id="speed" type="number" value="1.0" step="0.1"></div>
+  </div>
+  <label>Measured volume (m³, optional: weigh in water)</label><input id="mvol" type="number" step="0.0001">
+  <label>Measured centre of gravity x, y, z (m, optional, body frame)</label>
+  <div class="row3"><input id="cgx" type="number" step="0.001"><input id="cgy" type="number" step="0.001"><input id="cgz" type="number" step="0.001"></div>
+
+  <h2>3. Thrusters, fins, heavy parts</h2>
+  <div class="tools">
+    <button data-mode="thruster">+ thruster</button>
+    <button data-mode="fin">+ fin</button>
+    <button data-mode="part">+ heavy part</button>
+  </div>
+  <div class="hint" id="modehint">Pick a tool, then click on the model to place it.</div>
+  <div id="items"></div>
+
+  <button class="primary" id="build" disabled>Build model</button>
+  <button id="showresult" style="width:100%;margin-top:6px;display:none">Show results</button>
+  <div id="status"></div>
+  <p class="hint" style="margin-top:18px">Privacy: your CAD is processed on this server only and
+    deleted automatically after 2 hours. <a href="#" id="deletefiles" style="display:none">Delete my files now</a></p>
+</aside>
+
+<main>
+  <canvas id="view"></canvas>
+  <div id="legend">body axes: <b class="x">x forward</b> · <b class="y">y right</b> · <b class="z">z down</b></div>
+  <section id="result"></section>
+</main>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+
+const $ = (id) => document.getElementById(id);
+const AXES = ["+x", "-x", "+y", "-y", "+z", "-z"];
+for (const sel of [$("fwd"), $("up")]) for (const a of AXES) sel.add(new Option(a, a));
+$("fwd").value = "+x"; $("up").value = "-z";
+const UNIT = { mm: 0.001, cm: 0.01, m: 1 };
+
+// ---------- 3D view (scene coordinates = body frame: x fwd, y right, z down) ----------
+const canvas = $("view");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xeef1f5);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.001, 1000);
+camera.up.set(0, 0, -1);
+camera.position.set(-1.5, 1.5, -1.0);
+const controls = new OrbitControls(camera, canvas);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(-2, 3, -4); scene.add(sun);
+const root = new THREE.Group(); scene.add(root);   // CAD, transformed into the body frame
+const marks = new THREE.Group(); scene.add(marks); // thrusters, fins, parts
+let axesHelper = null, cadMesh = null, size = 1;
+
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas);
+(function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+
+function axisVec(name) {
+  const v = new THREE.Vector3(); v[name[1]] = name[0] === "-" ? -1 : 1; return v;
+}
+function bodyAxes() {
+  const x = axisVec($("fwd").value), up = axisVec($("up").value);
+  if (Math.abs(x.dot(up)) > 0.5) return null;
+  const z = up.clone().negate(), y = new THREE.Vector3().crossVectors(z, x);
+  const name = (v) => (v.x + v.y + v.z < 0 ? "-" : "") + (Math.abs(v.x) ? "x" : Math.abs(v.y) ? "y" : "z");
+  return { x, y, z, yaml: [name(x), name(y), name(z)] };
+}
+function applyTransform() {
+  const ax = bodyAxes();
+  if (!ax) { status("Forward and up must be different axes.", true); return; }
+  const s = UNIT[$("unit").value];
+  const m = new THREE.Matrix4().set(
+    ax.x.x * s, ax.x.y * s, ax.x.z * s, 0,
+    ax.y.x * s, ax.y.y * s, ax.y.z * s, 0,
+    ax.z.x * s, ax.z.y * s, ax.z.z * s, 0, 0, 0, 0, 1);
+  root.matrixAutoUpdate = false; root.matrix.copy(m); root.updateMatrixWorld(true);
+  if (cadMesh) {
+    const box = new THREE.Box3().setFromObject(root); const c = box.getCenter(new THREE.Vector3());
+    size = box.getSize(new THREE.Vector3()).length();
+    if (axesHelper) scene.remove(axesHelper);
+    axesHelper = new THREE.Group();
+    const cols = [0xdd2222, 0x1a8f2a, 0x2550d8];
+    [[1,0,0],[0,1,0],[0,0,1]].forEach((d, i) => axesHelper.add(new THREE.ArrowHelper(
+      new THREE.Vector3(...d), new THREE.Vector3(0,0,0), size * 0.45, cols[i], size*0.06, size*0.03)));
+    scene.add(axesHelper);
+    controls.target.copy(c);
+    camera.position.copy(c).add(new THREE.Vector3(-size, size * 0.9, -size * 0.6));
+    camera.near = size / 1000; camera.far = size * 100; camera.updateProjectionMatrix();
+    drawMarks();
+  }
+}
+for (const id of ["fwd", "up", "unit"]) $(id).addEventListener("change", () => { applyTransform(); showSize(); });
+let fileExtents = null;
+function showSize() {
+  if (!fileExtents) return;
+  const ax = bodyAxes(); if (!ax) return;
+  const s = UNIT[$("unit").value];
+  const along = (v) => Math.abs(v.x) * fileExtents[0] + Math.abs(v.y) * fileExtents[1] + Math.abs(v.z) * fileExtents[2];
+  const L = along(ax.x) * s, W = along(ax.y) * s, H = along(ax.z) * s;
+  const odd = Math.max(L, W, H) > 50 || Math.max(L, W, H) < 0.02;
+  $("sizeinfo").innerHTML = `Size: length ${L.toPrecision(3)} m × width ${W.toPrecision(3)} m × height ${H.toPrecision(3)} m` +
+    (odd ? ' <b class="err">— check the units!</b>' : "");
+}
+
+// ---------- upload and preview ----------
+let uploadId = null;
+$("cad").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (["step", "stp"].includes(ext)) $("unit").value = "m";  // STEP comes in metres
+  status(`Uploading ${file.name} (${(file.size / 2**20).toFixed(1)} MB)...`);
+  const form = new FormData(); form.append("file", file);
+  const up = await fetch("/api/upload", { method: "POST", body: form });
+  if (!up.ok) return status(await errorText(up), true);
+  uploadId = (await up.json()).id;
+  await loadPreview(file.name);
+});
+$("example").addEventListener("click", async () => {
+  status("Loading the example...");
+  const res = await fetch("/api/example", { method: "POST" });
+  if (!res.ok) return status(await errorText(res), true);
+  const ex = await res.json(); uploadId = ex.id;
+  $("name").value = ex.spec.name; $("mass").value = ex.spec.mass; $("water").value = ex.spec.water;
+  $("unit").value = ex.spec.unit; $("fwd").value = ex.spec.forward; $("up").value = ex.spec.up;
+  await loadPreview(ex.filename);
+  status(ex.spec.note);
+});
+$("deletefiles").addEventListener("click", async (e) => {
+  e.preventDefault(); if (!uploadId) return;
+  await fetch(`/api/upload/${uploadId}`, { method: "DELETE" });
+  uploadId = null; root.clear(); cadMesh = null; $("build").disabled = true; $("result").style.display = "none";
+  $("deletefiles").style.display = "none"; status("Your files were deleted from the server.");
+});
+async function loadPreview(fileName) {
+  status("Preparing 3D preview...");
+  const res = await fetch(`/api/preview/${uploadId}`);
+  if (!res.ok) return status(await errorText(res), true);
+  const geom = new STLLoader().parse(await res.arrayBuffer());
+  geom.computeVertexNormals();
+  root.clear();
+  cadMesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.1,
+    roughness: 0.7, side: THREE.DoubleSide }));
+  root.add(cadMesh);
+  const info = await (await fetch(`/api/preview/${uploadId}/info`)).json();
+  if (!info.watertight) { $("assembly").checked = true; }
+  fileExtents = info.extents;
+  applyTransform(); showSize();
+  $("build").disabled = false; $("deletefiles").style.display = "inline";
+  status(`${fileName}: ${info.faces.toLocaleString()} faces` +
+         (info.watertight ? ", closed solid" : ", not closed: treated as an assembly") +
+         ". Check the size and that the red arrow points forward and blue points down.");
+}
+
+// ---------- placing thrusters, fins, parts ----------
+let mode = null; const items = [];
+document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+  mode = mode === b.dataset.mode ? null : b.dataset.mode;
+  document.querySelectorAll("[data-mode]").forEach((x) => x.classList.toggle("active", x.dataset.mode === mode));
+  $("modehint").textContent = mode ? `Click on the model to place a ${mode}.` : "Pick a tool, then click on the model to place it.";
+}));
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let downAt = null;
+canvas.addEventListener("pointerdown", (e) => downAt = [e.clientX, e.clientY]);
+canvas.addEventListener("pointerup", (e) => {
+  if (!mode || !cadMesh || !downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
+  const r = canvas.getBoundingClientRect();
+  mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(mouse, camera);
+  const hit = ray.intersectObject(cadMesh)[0]; if (!hit) return;
+  const p = hit.point; const pos = [p.x, p.y, p.z].map((v) => +v.toFixed(4));
+  const n = items.filter((i) => i.kind === mode).length;
+  if (mode === "thruster") items.push({ kind: "thruster", name: `thruster${n}`, position: pos, direction: "+x", model: "T200", max_forward: "", max_reverse: "" });
+  if (mode === "fin") items.push({ kind: "fin", name: `fin${n}`, position: pos, normal: "+y", area_cm2: 66, span_cm: 8.5, control: true });
+  if (mode === "part") items.push({ kind: "part", name: `part${n}`, position: pos, mass: 1.0, size_cm: [20, 8, 6] });
+  renderItems(); drawMarks();
+});
+
+function vecFrom(name) { const v = [0, 0, 0]; v["xyz".indexOf(name[1])] = name[0] === "-" ? -1 : 1; return v; }
+function field(it, key, label, type = "number", opts = null) {
+  const wrap = document.createElement("div");
+  wrap.innerHTML = `<label>${label}</label>`;
+  let el;
+  if (opts) { el = document.createElement("select"); opts.forEach((o) => el.add(new Option(o, o))); }
+  else { el = document.createElement("input"); el.type = type; if (type === "number") el.step = "any"; }
+  if (type === "checkbox") { el.checked = it[key]; el.style.width = "auto"; }
+  else el.value = it[key];
+  el.addEventListener("change", () => { it[key] = type === "checkbox" ? el.checked : (type === "number" ? (el.value === "" ? "" : +el.value) : el.value); drawMarks(); });
+  wrap.append(el); return wrap;
+}
+function posFields(it) {
+  const row = document.createElement("div"); row.className = "row3";
+  ["x", "y", "z"].forEach((a, i) => {
+    const w = document.createElement("div"); w.innerHTML = `<label>${a} (m)</label>`;
+    const el = document.createElement("input"); el.type = "number"; el.step = "any"; el.value = it.position[i];
+    el.addEventListener("change", () => { it.position[i] = +el.value; drawMarks(); }); w.append(el); row.append(w);
+  }); return row;
+}
+function renderItems() {
+  const box = $("items"); box.innerHTML = "";
+  items.forEach((it, idx) => {
+    const d = document.createElement("div"); d.className = "item";
+    d.innerHTML = `<header><span>${it.kind}: ${it.name}</span><button>remove</button></header>`;
+    d.querySelector("button").onclick = () => { items.splice(idx, 1); renderItems(); drawMarks(); };
+    d.append(field(it, "name", "name", "text"), posFields(it));
+    if (it.kind === "thruster") {
+      const r = document.createElement("div"); r.className = "row";
+      r.append(field(it, "direction", "pushes towards", "text", AXES), field(it, "model", "model (T200 has limits)", "text"));
+      const r2 = document.createElement("div"); r2.className = "row";
+      r2.append(field(it, "max_forward", "max forward thrust (N)"), field(it, "max_reverse", "max reverse thrust (N)"));
+      d.append(r, r2);
+    } else if (it.kind === "fin") {
+      const r = document.createElement("div"); r.className = "row3";
+      r.append(field(it, "normal", "lift direction", "text", AXES), field(it, "area_cm2", "area (cm²)"), field(it, "span_cm", "span (cm)"));
+      d.append(r, field(it, "control", "movable (rudder / stern plane)", "checkbox"));
+    } else {
+      d.append(field(it, "mass", "mass (kg)"));
+    }
+    box.append(d);
+  });
+}
+function drawMarks() {
+  marks.clear(); const s = size || 1;
+  for (const it of items) {
+    const p = new THREE.Vector3(...it.position);
+    if (it.kind === "thruster") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.direction)), p, s * 0.18, 0xff7a00, s * 0.05, s * 0.03));
+    if (it.kind === "fin") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.normal)), p, s * 0.12, 0x8a2be2, s * 0.04, s * 0.025));
+    if (it.kind === "part") { const m = new THREE.Mesh(new THREE.SphereGeometry(s * 0.02), new THREE.MeshBasicMaterial({ color: 0x0aa })); m.position.copy(p); marks.add(m); }
+  }
+}
+
+// ---------- build ----------
+function num(id) { const v = $(id).value; return v === "" ? null : +v; }
+function spec() {
+  const ax = bodyAxes();
+  const s = {
+    name: $("name").value || "vehicle", category: "underwater", mass: num("mass"),
+    water: $("water").value, speed: num("speed") ?? 1.0,
+    geometry: { unit: $("unit").value, axes: ax ? ax.yaml : ["x", "y", "z"], assembly: $("assembly").checked,
+                voxel: num("voxel") ?? 4, hydrodynamics: $("hydro").value, origin: "center" },
+  };
+  const measured = {};
+  if (num("mvol")) measured.volume = num("mvol");
+  if ([num("cgx"), num("cgy"), num("cgz")].every((v) => v !== null)) measured.r_g = [num("cgx"), num("cgy"), num("cgz")];
+  if (Object.keys(measured).length) s.measured = measured;
+  const thr = items.filter((i) => i.kind === "thruster").map((t) => {
+    const o = { model: t.model || "custom", position: t.position, direction: vecFrom(t.direction) };
+    if (t.max_forward !== "") o.max_forward = t.max_forward;
+    if (t.max_reverse !== "") o.max_reverse = t.max_reverse;
+    return o;
+  });
+  if (thr.length) s.thrusters = thr;
+  const fins = items.filter((i) => i.kind === "fin").map((f) => ({ name: f.name, position: f.position,
+    normal: vecFrom(f.normal), area: f.area_cm2 / 1e4, span: f.span_cm / 100, control: !!f.control }));
+  if (fins.length) s.fins = fins;
+  const parts = items.filter((i) => i.kind === "part").map((p) => ({ name: p.name, mass: p.mass, position: p.position }));
+  if (parts.length) s.parts = parts;
+  return s;
+}
+$("build").addEventListener("click", async () => {
+  if (!num("mass")) return status("Enter the vehicle mass first.", true);
+  $("build").disabled = true; status("Building the model (an assembly can take a minute)...");
+  const res = await fetch(`/api/build/${uploadId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(spec()) });
+  $("build").disabled = false;
+  if (!res.ok) return status(await errorText(res), true);
+  const r = await res.json();
+  status("Done: the results panel is open on the right. Download the zip for MATLAB, Simulink and Gazebo.");
+  showResult(r);
+});
+
+
+const DOF = ["surge (u)", "sway (v)", "heave (w)", "roll (p)", "pitch (q)", "yaw (r)"];
+function n(v, digits = 4) {
+  const x = +v; if (!isFinite(x)) return "–"; if (x === 0) return "0";
+  return Math.abs(x) >= 1e4 || Math.abs(x) < 1e-3 ? x.toExponential(2) : x.toPrecision(digits);
+}
+function pm(p) { // "value ± sigma unit [source]" for a scalar parameter
+  return `${n(p.value)} <span class="src">± ${n(p.sigma, 2)} ${p.unit} · ${p.source}</span>`;
+}
+function vec(p) {
+  return `[${p.value.map((x) => n(x)).join(", ")}] <span class="src">± ${n(Math.max(...p.sigma), 2)} ${p.unit} · ${p.source}</span>`;
+}
+function matrix(m, title) {
+  const labels = ["u", "v", "w", "p", "q", "r"];
+  return `<table><tr><th>${title}</th>${labels.map((l) => `<th>${l}</th>`).join("")}</tr>` +
+    m.map((row, i) => `<tr><td>${labels[i]}</td>${row.map((x) => `<td>${n(x)}</td>`).join("")}</tr>`).join("") + "</table>";
+}
+function showResult(r) {
+  const m = r.model, box = $("result");
+  const diag = (M) => M.value.map((row, i) => row[i]);
+  const net = m.buoyancy.value - m.weight.value;
+  const inertia = diag(m.inertia_g);
+  const perAxis = [
+    ["inertia about CG (kg m²)", [null, null, null, ...inertia], m.inertia_g.source],
+    ["added mass (kg, kg m²)", diag(m.M_A), m.M_A.source],
+    ["linear damping (N s/m, N m s/rad)", m.D_linear.value, m.D_linear.source],
+    ["quadratic damping (N s²/m², N m s²/rad²)", m.D_quadratic.value, m.D_quadratic.source],
+  ];
+  box.innerHTML = `
+    <button class="close" title="close">×</button>
+    <h3>Model: ${m.name}</h3>
+    <p class="eq">M ν̇ + C(ν) ν + D(ν) ν + g(η) = τ,  M = M_RB + M_A  · body frame: x forward, y right, z down</p>
+    <p><a href="/api/download/${uploadId}/${r.result}"><button class="primary" style="width:auto;margin:0">⬇ Download model (MATLAB low/nominal/high, Simulink, Gazebo, report)</button></a></p>
+    <h2>Checks</h2>
+    ${r.checks.map((c) => `<div class="check"><span class="badge ${c.status}">${c.status}</span>${c.name}: <span class="src">${c.detail}</span></div>`).join("")}
+    ${r.warnings.length ? `<h2>Warnings</h2>${r.warnings.map((w) => `<div class="check warn">⚠ ${w}</div>`).join("")}` : ""}
+    <h2>Mass and buoyancy</h2>
+    <table>
+      <tr><td>mass</td><td>${pm(m.mass)}</td></tr>
+      <tr><td>displaced volume</td><td>${pm(m.volume)}</td></tr>
+      <tr><td>weight W / buoyancy B</td><td>${n(m.weight.value)} N / ${n(m.buoyancy.value)} N</td></tr>
+      <tr><td>net buoyancy B − W</td><td>${n(net)} N ${net > 0 ? "(floats up)" : net < 0 ? "(sinks)" : ""}</td></tr>
+      <tr><td>centre of gravity r_g</td><td>${vec(m.r_g)}</td></tr>
+      <tr><td>centre of buoyancy r_b</td><td>${vec(m.r_b)}</td></tr>
+    </table>
+    <h2>Per axis</h2>
+    <table><tr><th></th>${DOF.map((d) => `<th>${d}</th>`).join("")}<th>source</th></tr>
+      ${perAxis.map(([label, vals, src]) => `<tr><td>${label}</td>${vals.map((v) => `<td>${v === null ? "" : n(v)}</td>`).join("")}<td class="src">${src}</td></tr>`).join("")}
+    </table>
+    <p class="src">Damping cannot be computed exactly from CAD; the download also has low/high bound models for robust controller checks.</p>
+    <h2>Rigid-body mass matrix M_RB</h2>${matrix(m.M_RB, "M_RB")}
+    <h2>Added mass matrix M_A</h2>${matrix(m.M_A.value, "M_A")}
+    ${m.B_thr.length && m.B_thr[0].length ? `<h2>Thruster matrix (τ = B f)</h2>${matrix(m.B_thr.map((row) => row), "B")}` : ""}
+    <details><summary>Full text report</summary><pre>${r.report.replace(/</g, "&lt;")}</pre></details>`;
+  box.style.display = "block";
+  box.querySelector(".close").onclick = () => { box.style.display = "none"; };
+  $("showresult").style.display = "block";
+  $("showresult").onclick = () => { box.style.display = "block"; };
+}
+
+async function errorText(res) {
+  try { const j = await res.json(); return (j.detail || JSON.stringify(j)); } catch { return `${res.status} ${res.statusText}`; }
+}
+function status(msg, err = false) { $("status").innerHTML = ""; const d = document.createElement("div"); d.textContent = msg; if (err) d.className = "err"; $("status").append(d); }
+resize();
+</script>
+</body>
+</html>

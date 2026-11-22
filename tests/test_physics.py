@@ -100,7 +100,7 @@ def test_open_mesh_file_is_rejected(tmp_path):
         "solid t\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n"
         "endloop\nendfacet\nendsolid t\n"
     )
-    with pytest.raises(GeometryError, match="not closed"):
+    with pytest.raises(GeometryError, match="no volume"):  # a lone triangle
         build_mesh(Geometry(file=stl))
 
 

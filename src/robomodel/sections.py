@@ -32,7 +32,29 @@ class Sections:
         return float(np.sum(values) * self.dx)
 
 
+def voxel_sections(hull) -> Sections:
+    """Sections of a VoxelHull: one per voxel layer along x."""
+    grid = hull.filled
+    keep = np.flatnonzero(grid.any(axis=(1, 2)))
+    grid = grid[keep[0] : keep[-1] + 1]
+    n = grid.shape[0]
+    half_w, half_h, area = np.zeros(n), np.zeros(n), np.zeros(n)
+    for i in range(n):
+        layer = grid[i]
+        if not layer.any():
+            continue
+        ys = np.flatnonzero(layer.any(axis=1))
+        zs = np.flatnonzero(layer.any(axis=0))
+        half_w[i] = (ys[-1] - ys[0] + 1) * hull.pitch / 2
+        half_h[i] = (zs[-1] - zs[0] + 1) * hull.pitch / 2
+        area[i] = layer.sum() * hull.pitch**2
+    xs = hull.origin[0] + (keep[0] + np.arange(n) + 0.5) * hull.pitch
+    return Sections(xs, hull.pitch, half_w, half_h, area, n * hull.pitch)
+
+
 def slice_hull(mesh: trimesh.Trimesh, stations: int = DEFAULT_STATIONS) -> Sections:
+    if hasattr(mesh, "filled"):  # VoxelHull
+        return voxel_sections(mesh)
     x_min, x_max = mesh.bounds[:, 0]
     length = float(x_max - x_min)
     dx = length / stations

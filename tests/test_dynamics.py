@@ -497,7 +497,49 @@ def test_body_lift_only_for_slender_hulls():
     assert slender.body_lift is not None
     b = slender.body_lift.value
     assert b[1, 1] > 0 and b[2, 2] > 0  # sideslip makes an opposing force
-    assert b[1, 5] == 0  # rotation alone makes no body lift
+    assert abs(b[1, 5]) < 1e-9  # rotation alone makes no body lift (origin at hull centre)
     assert b[5, 1] < 0  # centre of pressure aft: the moment turns the nose into the flow
     stubby = build_model(make_vehicle())  # a sphere
     assert stubby.body_lift is None
+
+
+# --- Ocean current and thruster dead band -----------------------------------
+
+
+def test_neutral_vehicle_drifts_with_the_current():
+    from dataclasses import replace as dc_replace
+
+    dyn = dc_replace(
+        simple_dynamics(d_lin=np.full(6, 2.0), d_quad=np.full(6, 20.0)),
+        current_ned=np.array([0.3, -0.2, 0.0]),
+    )
+    traj = simulate(dyn, 60.0)
+    phi, theta, psi = traj.eta[-1, 3:]
+    ground = rotation_zyx(phi, theta, psi) @ traj.nu[-1, :3]  # velocity over ground, NED
+    np.testing.assert_allclose(ground, [0.3, -0.2, 0.0], atol=2e-3)  # carried along
+    still = simulate(simple_dynamics(d_lin=np.full(6, 2.0)), 10.0)
+    assert np.max(np.abs(still.nu)) < 1e-9  # no current, no motion
+
+
+def test_current_from_vehicle_file():
+    v = make_vehicle(current=[0.5, 0, 0])
+    np.testing.assert_allclose(build_model(v).dynamics().current_ned, [0.5, 0, 0])
+
+
+def test_thruster_dead_band():
+    v = make_vehicle(
+        thrusters=[
+            {
+                "model": "x",
+                "position": [0, 0, 0],
+                "direction": [1, 0, 0],
+                "max_forward": 40,
+                "max_reverse": 30,
+                "dead_band": 0.1,
+            }
+        ]
+    )
+    f = thrust(v.thrusters, [0.05])
+    assert f[0] == 0.0
+    assert thrust(v.thrusters, [1.0])[0] == pytest.approx(40)
+    assert thrust(v.thrusters, [0.55])[0] == pytest.approx(40 * 0.5**2)

@@ -8,11 +8,16 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "cascadio>=0.1.1",
+    "fastapi>=0.165.0",
+    "networkx>=3.7",
     "numpy>=2.5.5",
+    "python-multipart>=0.0.34",
     "pyyaml>=6.0.4",
     "scipy>=1.18.1",
     "shapely>=2.2.0",
     "trimesh>=5.2.1",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -24,6 +29,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.2.0",
     "ruff>=0.17.6",
 ]
@@ -39,3 +45,4 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "validation/*" = ["E501"]  # long Turkish report text
+"src/robomodel/web.py" = ["B008"]  # FastAPI declares uploads as File(...) defaults
