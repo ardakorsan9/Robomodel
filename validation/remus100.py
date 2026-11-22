@@ -77,6 +77,8 @@ def comparison(model: VehicleModel) -> list[Row]:
     # rho * CLa * S_fin, with rho = 1030, CLa = 3.12, S_fin = 6.65e-3, x_fin = -0.638.
     k = 1030 * 3.12 * 6.65e-3
     x_fin = -0.638
+    bl = np.asarray(model.body_lift.value) if model.body_lift is not None else np.zeros((6, 6))
+    k_bl = 0.5 * 1030 * 0.191**2 * 1.20
     fin_note = "teori sütunu: tezin formülü (denk. 4.44-4.45); tablo bu formülden 2,2 kat küçük, tezde nedeni açıklanmıyor"
 
     return [
@@ -201,15 +203,28 @@ def comparison(model: VehicleModel) -> list[Row]:
         Row("Kontrol", "N_uudr", float(rudder[5]), k * x_fin, -6.15, "denk. 4.45, Tablo C.10"),
         Row("Kontrol", "Z_uuds", float(planes[2]), -k, -9.64, "denk. 4.44, Tablo C.10"),
         Row("Kontrol", "M_uuds", float(planes[4]), k * x_fin, -6.15, "denk. 4.45, Tablo C.10"),
+        # Body lift: Prestero eq. 4.34-4.36 with his c_yd_beta = 1.20, d = 0.191, x_cp = -0.321
+        # (Table A.1) as theory; Table C.4 as the values he used. They differ by ~1.3x.
         Row(
             "Gövde kaldırması",
             "Y_uvl",
-            None,
-            -1.90e1,
-            -1.90e1,
-            "Tablo 4.2 - C.10",
-            "robomodel'de yok (Hoerner gövde kaldırması); Y_uv = -28,6 toplamından kanat payı çıkarıldı",
+            -bl[1, 1],
+            -k_bl,
+            -2.86e1,
+            "denk. 4.34, Tablo C.4",
+            "teori: tezin formülü; tablo formülden 1,27 kat büyük",
         ),
+        Row("Gövde kaldırması", "Z_uwl", -bl[2, 2], -k_bl, -2.86e1, "denk. 4.34, Tablo C.4"),
+        Row(
+            "Gövde kaldırması",
+            "N_uvl",
+            -bl[5, 1],
+            -k_bl * -0.321,
+            4.47,
+            "denk. 4.36, Tablo C.4",
+            "basınç merkezi: bizde -0,26 m (burundan 0,65 L), tezde -0,321 m",
+        ),
+        Row("Gövde kaldırması", "M_uwl", -bl[4, 2], k_bl * -0.321, -4.47, "denk. 4.36, Tablo C.4"),
     ]
 
 

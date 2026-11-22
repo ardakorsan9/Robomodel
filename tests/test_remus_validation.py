@@ -67,8 +67,20 @@ def test_fin_lift_matches_prestero_formula(rows, name):
 
 
 def test_turn_with_sea_tuned_damping_matches_sea_trial(model):
-    """With Prestero's sea-tuned damping factors, our fins and dynamics give the measured
-    turn rate. Without them (CAD only) the vehicle turns far too fast: see the report."""
-    scale = [1, 10, 10, 1, 12.5, 10.0]
-    rate = remus100.steady_turn(model, damping_scale=np.array(scale))
-    assert rate == pytest.approx(remus100.FIELD_YAW_RATE, rel=0.3)
+    """With Prestero's sea-tuned damping factors, our fins, body lift and dynamics give
+    the measured turn rate. The field value is read off a plot (about +-20 %)."""
+    scale = np.array([1, 10, 10, 1, 12.5, 10.0])
+    rate = remus100.steady_turn(model, damping_scale=scale)
+    assert rate == pytest.approx(remus100.FIELD_YAW_RATE, rel=0.35)
+
+
+def test_cad_only_turn_is_within_a_factor_of_two(model):
+    """CAD only (no calibration): too fast, because damping is underestimated ~10x.
+    Body lift brought it from +179 % to about +60 %; this keeps that improvement."""
+    rate = remus100.steady_turn(model)
+    assert remus100.FIELD_YAW_RATE < rate < 2 * remus100.FIELD_YAW_RATE
+
+
+@pytest.mark.parametrize("name", ["Y_uvl", "Z_uwl"])
+def test_body_lift_matches_prestero_formula(rows, name):
+    check(rows[name], rows[name].theory, 0.02)

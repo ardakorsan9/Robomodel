@@ -35,6 +35,24 @@ MATLAB dosyalarını üret (`--speed`: doğrusal modelin çalışma noktasındak
 uv run robomodel matlab examples/test_auv.yaml -o ~/veri/kayitlar/robomodel/test_auv_matlab --speed 1.0
 ```
 
+Ölçüm sihirbazı: hangi ölçüm modeli en çok iyileştirir?
+
+```bash
+uv run robomodel wizard examples/test_auv.yaml
+```
+
+Havuz test planı (CSV şablonları ve Türkçe talimat):
+
+```bash
+uv run robomodel testplan examples/test_auv.yaml -o ~/veri/kayitlar/robomodel/test_plani
+```
+
+Testlerden sonra kalibrasyon (sonuç `<arac>_calibrated.yaml`; `build` ve `matlab` ile kullanılır):
+
+```bash
+uv run robomodel calibrate examples/test_auv.yaml kayit1.csv kayit2.csv --validate kontrol.csv
+```
+
 MATLAB'da o klasöre geçip `test_auv_example` çalıştır. Simülasyonu yapar, Python sonucuyla
 karşılaştırır ve grafiği çizer. Kontrolcü tasarımı için `test_auv_linear.mat` içindeki
 `A`, `B` matrislerini kullan.
@@ -59,6 +77,10 @@ uv run pytest
 | `src/robomodel/damping.py` | Sönümleme tahmini (Hoerner): doğrusal + karesel |
 | `src/robomodel/thrusters.py` | İtici eğrisi ve dağıtım matrisi B |
 | `src/robomodel/fins.py` | Kanatlar: kaldırma (Helmbold), eklenmiş kütle, dümen girişi |
+| `src/robomodel/body_lift.py` | Uzun gövdelerde gövde kaldırması (Hoerner) |
+| `src/robomodel/calibration.py` | Test kayıtlarından kalibrasyon (MAP uydurma, belirsizlikle) |
+| `src/robomodel/testplan.py` | Havuz test planı ve CSV şablonları |
+| `src/robomodel/wizard.py` | Ölçüm sihirbazı: belirsizliğin davranışa etkisi, ölçüm sırası |
 | `src/robomodel/dynamics.py` | Fossen 6-DOF denklemleri, simülatör, doğrusallaştırma |
 | `src/robomodel/matlab_export.py` | MATLAB dosyaları |
 | `src/robomodel/model.py` | Hepsini birleştirir, rapor ve YAML çıktısı |
@@ -69,6 +91,9 @@ uv run pytest
 | `tests/test_remus_validation.py` | REMUS 100: Prestero 2001 ile gösterilen uyumu korur |
 | `validation/remus100.py` | REMUS 100 karşılaştırması; `docs/dogrulama_remus100.md` raporunu yazar |
 | `docs/dogrulama_remus100.md` | REMUS 100 doğrulama raporu |
+| `validation/calibration_remus.py` | Sanal havuz: kalibrasyonun bilinen gerçeği geri bulması |
+| `docs/dogrulama_kalibrasyon.md` | Kalibrasyon doğrulama raporu |
+| `tests/test_calibration.py` | Kalibrasyon, test planı, sihirbaz, komut satırı |
 | `docs/eksenler.md` | Eksen ve işaret kuralları. Kod yazmadan önce oku |
 | `docs/plan.md` | Fazlar, saat tahminleri, doğrulama merdiveni |
 
@@ -92,6 +117,7 @@ thrusters:
 fins:                       # isteğe bağlı: kanat, dümen, derinlik dümeni
   # normal: kanadın suyu ittiği yön; control: true ise açısı değiştirilebilir (dümen)
   - {name: rudder_top, position: [-0.7, 0, -0.14], normal: [0, 1, 0], area: 0.0066, span: 0.08, control: true}
+# calibration: robomodel calibrate bu bloğu yazar (CAD değerine göre çarpanlar)
 measured:                   # isteğe bağlı: araç üzerinde ölçülen değerler CAD tahmininin yerine geçer
   r_g: [0.0, 0.0, 0.02]     # denge testiyle kütle merkezi, m
   inertia_g: [0.18, 3.4, 3.4]   # sarkaç testiyle eylemsizlik (kütle merkezi etrafında), kg m^2

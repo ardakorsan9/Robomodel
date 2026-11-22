@@ -490,3 +490,14 @@ def test_measured_values_replace_cad_estimates():
 def test_bad_measured_inertia_rejected():
     with pytest.raises(ValueError, match="inertia_g"):
         make_vehicle(measured={"inertia_g": [0.1, -0.5, 0.5]})
+
+
+def test_body_lift_only_for_slender_hulls():
+    slender = finned_auv([])
+    assert slender.body_lift is not None
+    b = slender.body_lift.value
+    assert b[1, 1] > 0 and b[2, 2] > 0  # sideslip makes an opposing force
+    assert b[1, 5] == 0  # rotation alone makes no body lift
+    assert b[5, 1] < 0  # centre of pressure aft: the moment turns the nose into the flow
+    stubby = build_model(make_vehicle())  # a sphere
+    assert stubby.body_lift is None

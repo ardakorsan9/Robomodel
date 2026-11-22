@@ -1,4 +1,4 @@
-"""Command line interface: robomodel check | build | matlab."""
+"""Command line interface: robomodel check | build | matlab | testplan | calibrate | wizard."""
 
 from __future__ import annotations
 
@@ -31,8 +31,37 @@ def main(argv: list[str] | None = None) -> int:
         default=0.0,
         help="surge speed (m/s) of the linear model's operating point",
     )
+    testplan = commands.add_parser("testplan", help="write a pool test plan (CSV templates)")
+    testplan.add_argument("vehicle", help="path to the vehicle YAML file")
+    testplan.add_argument("-o", "--output", required=True, help="output folder")
+    cal = commands.add_parser("calibrate", help="fit uncertain terms to logged test runs")
+    cal.add_argument("vehicle", help="path to the vehicle YAML file")
+    cal.add_argument("logs", nargs="+", help="CSV logs used for fitting")
+    cal.add_argument("--validate", nargs="*", default=[], help="CSV logs only for checking")
+    cal.add_argument(
+        "--groups",
+        default="damping,fin_lift,body_lift",
+        help="comma list: damping, added_mass, fin_lift, body_lift",
+    )
+    cal.add_argument(
+        "-o", "--output", help="calibrated vehicle YAML (default: <vehicle>_calibrated.yaml)"
+    )
+    wizard = commands.add_parser("wizard", help="which measurement improves the model most")
+    wizard.add_argument("vehicle", help="path to the vehicle YAML file")
     args = parser.parse_args(argv)
 
+    if args.command == "wizard":
+        from robomodel.wizard import report as wizard_report
+
+        model = _load_model(args.vehicle)
+        if model is None:
+            return 1
+        print(wizard_report(model))
+        return 0
+    if args.command == "testplan":
+        return _testplan(args.vehicle, args.output)
+    if args.command == "calibrate":
+        return _calibrate(args)
     if args.command == "check":
         return _check(args.vehicle)
     if args.command == "build":
@@ -72,6 +101,59 @@ def _matlab(path: str, output: str, speed: float) -> int:
         return 1
     for f in write_matlab(model, output, speed):
         print(f"wrote {f}")
+    return 0
+
+
+def _load_model(path: str):
+    try:
+        return build_model(load_vehicle(path))
+    except FileNotFoundError:
+        print(f"error: file not found: {path}", file=sys.stderr)
+    except (VehicleError, GeometryError) as e:
+        print(f"error: {e}", file=sys.stderr)
+    return None
+
+
+def _testplan(path: str, output: str) -> int:
+    from robomodel.testplan import write_plan
+
+    model = _load_model(path)
+    if model is None:
+        return 1
+    for f in write_plan(model, output):
+        print(f"wrote {f}")
+    return 0
+
+
+def _calibrate(args) -> int:
+    from pathlib import Path
+
+    from robomodel.calibration import calibrate, calibration_to_yaml, load_log, summary
+
+    model = _load_model(args.vehicle)
+    if model is None:
+        return 1
+    try:
+        logs = [load_log(p) for p in args.logs]
+        checks = [load_log(p) for p in args.validate]
+        groups = tuple(g.strip() for g in args.groups.split(",") if g.strip())
+        result = calibrate(model, logs, groups=groups, validation=checks)
+    except (OSError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    print(summary(result))
+    source = Path(args.vehicle)
+    out = Path(args.output) if args.output else source.with_name(source.stem + "_calibrated.yaml")
+    with source.open(encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    geometry = data.get("geometry", {})
+    if "file" in geometry and not Path(geometry["file"]).is_absolute():
+        # keep the mesh path valid if the output goes to another folder
+        geometry["file"] = str((source.parent / geometry["file"]).resolve())
+    data["calibration"] = calibration_to_yaml(result.calibration)
+    with out.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+    print(f"\nsaved: {out}  (use it with build / matlab like any vehicle file)")
     return 0
 
 

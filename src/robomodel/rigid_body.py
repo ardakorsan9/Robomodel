@@ -18,7 +18,7 @@ from robomodel.vehicle import Part, Vehicle
 
 MASS_REL_SIGMA = 0.01  # typical scale accuracy
 UNIFORM_INERTIA_REL_SIGMA = 0.30  # real mass is not spread evenly over the hull
-UNIFORM_COG_SIGMA_FRACTION = 0.05  # of the hull's largest dimension, per axis
+UNIFORM_COG_SIGMA_FRACTION = 0.05  # of the hull's size along each axis
 MEASURED_COG_SIGMA = 0.002  # m, a careful balance test
 MEASURED_INERTIA_REL_SIGMA = 0.05  # pendulum test
 
@@ -89,8 +89,8 @@ def mass_properties(vehicle: Vehicle, hull: trimesh.Trimesh) -> MassProperties:
 
     # Uncertainty: the uniform-hull assumption dominates when the hull carries the mass.
     hull_share = hull_mass / vehicle.mass
-    size = float(np.max(hull.extents))
-    cog_sigma = np.full(3, UNIFORM_COG_SIGMA_FRACTION * size * hull_share)
+    # per axis: a hull cannot hide its CG further than its own size along that axis
+    cog_sigma = UNIFORM_COG_SIGMA_FRACTION * np.asarray(hull.extents, dtype=float) * hull_share
     note = (
         f"hull mass {hull_mass:.3g} kg assumed uniform; list heavy parts to improve this"
         if hull_share > 0

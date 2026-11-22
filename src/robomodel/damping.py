@@ -25,7 +25,9 @@ STREAMLINED_LD = 3.0
 REF_SPEED = 0.1  # m/s: linear damping = quadratic at this speed, assumed
 REF_RATE = 0.2  # rad/s, same for rotations
 ROLL_FLOOR = 0.05  # roll linear damping at least this share of pitch linear damping
-QUAD_REL_SIGMA = 0.5
+# Surge drag matched REMUS sea data within 2 %; the crossflow terms were ~10x too low
+# (Prestero 2001, docs/dogrulama_remus100.md), so they get a wide uncertainty.
+QUAD_REL_SIGMA = np.array([0.5, 1.0, 1.0, 1.0, 1.0, 1.0])
 LINEAR_REL_SIGMA = 1.0
 
 
@@ -84,8 +86,8 @@ def estimate_damping(sections: Sections, rho: float) -> Damping:
     linear[3] = max(linear[3], ROLL_FLOOR * linear[4])
 
     note = (
-        "handbook estimate (Hoerner); fins and other appendages are not included. "
-        "Pool tests are needed for accurate damping"
+        "handbook estimate (Hoerner); crossflow terms can be ~10x low (REMUS validation). "
+        "Pool tests and robomodel calibrate are needed for accurate damping"
     )
     return Damping(
         linear=Parameter(

@@ -104,6 +104,33 @@ class Measured:
 
 
 @dataclass(frozen=True)
+class Calibration:
+    """Scale factors fitted to test data (robomodel calibrate); 1 means the CAD value.
+
+    Each *_sigma is the fitted relative uncertainty of the scale (1 sigma).
+    """
+
+    damping: np.ndarray = field(default_factory=lambda: np.ones(6))  # per DOF, lin + quad
+    added_mass: np.ndarray = field(default_factory=lambda: np.ones(6))  # diagonal of M_A
+    fin_lift: float = 1.0
+    body_lift: float = 1.0
+    damping_sigma: np.ndarray = field(default_factory=lambda: np.zeros(6))
+    added_mass_sigma: np.ndarray = field(default_factory=lambda: np.zeros(6))
+    fin_lift_sigma: float = 0.0
+    body_lift_sigma: float = 0.0
+    note: str = ""
+
+    @property
+    def is_identity(self) -> bool:
+        return (
+            np.allclose(self.damping, 1)
+            and np.allclose(self.added_mass, 1)
+            and self.fin_lift == 1
+            and self.body_lift == 1
+        )
+
+
+@dataclass(frozen=True)
 class Vehicle:
     name: str
     category: str
@@ -114,6 +141,7 @@ class Vehicle:
     thrusters: tuple[Thruster, ...] = ()
     fins: tuple[Fin, ...] = ()
     measured: Measured = field(default_factory=Measured)
+    calibration: Calibration = field(default_factory=Calibration)
 
 
 def load_vehicle(path: str | Path) -> Vehicle:
@@ -162,6 +190,7 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         if (f := _fin(raw, i, problems)) is not None
     )
     measured = _measured(data.get("measured"), problems)
+    calibration = _calibration(data.get("calibration"), problems)
 
     if mass is not None and parts:
         parts_mass = sum(p.mass for p in parts)
@@ -182,6 +211,7 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         thrusters=thrusters,
         fins=fins,
         measured=measured,
+        calibration=calibration,
     )
 
 
@@ -396,3 +426,31 @@ def _numeric(value: object) -> bool:
     except (TypeError, ValueError):
         return False
     return True
+
+
+def _calibration(raw: object, problems: list[str]) -> Calibration:
+    if raw is None:
+        return Calibration()
+    if not isinstance(raw, dict):
+        problems.append("'calibration' must be a mapping (written by robomodel calibrate)")
+        return Calibration()
+    values: dict = {}
+    for key in ("damping", "added_mass", "damping_sigma", "added_mass_sigma"):
+        if key in raw:
+            arr = np.asarray(raw[key], dtype=float) if _numeric(raw[key]) else None
+            positive = key.endswith("sigma") or (arr is not None and np.all(arr > 0))
+            if arr is None or arr.shape != (6,) or not positive or np.any(arr < 0):
+                problems.append(f"'calibration.{key}' must be 6 numbers (scales > 0)")
+            else:
+                values[key] = arr
+    for key in ("fin_lift", "body_lift", "fin_lift_sigma", "body_lift_sigma"):
+        if key in raw:
+            v = raw[key]
+            ok = isinstance(v, (int, float)) and not isinstance(v, bool)
+            if not ok or v < 0 or (not key.endswith("sigma") and v == 0):
+                problems.append(f"'calibration.{key}' must be a positive number")
+            else:
+                values[key] = float(v)
+    if "note" in raw:
+        values["note"] = str(raw["note"])
+    return Calibration(**values)

@@ -24,10 +24,10 @@ geçmeden sonraki aşamaya geçilmez.
 |---|---|---|
 | O1 | Gazebo / URDF çıktısı + eksen dönüşüm modülü | ROS 2 ile kullanmak için |
 | O2 | Capytaine (BEM) ile eklenmiş kütle | Kutu gibi, ince olmayan gövdelerde şerit teorisinden çok daha iyi |
-| O3 | Havuz verisiyle kalibrasyon | Sönümlemeyi %90+ uyuma çıkarmanın tek yolu |
-| O4 | Ölçüm sihirbazı | "Şunu ölç, doğruluk şu kadar artar" |
+| O3 | Havuz verisiyle kalibrasyon | **Tamam**: `robomodel calibrate`, `robomodel testplan`; sanal havuzda doğrulandı |
+| O4 | Ölçüm sihirbazı | **Tamam**: `robomodel wizard` |
 | O5 | REMUS 100 / BlueROV2 doğrulaması | Yayınlanmış değerlerle kanıt; kaynak verisi gerekli |
-| O6 | Kanat ve uzantılar (fin, iticilerin dış hacmi) | **Kanatlar tamam** (kaldırma, eklenmiş kütle, dümen). Gövde kaldırması ve itici dış hacmi yok |
+| O6 | Kanat ve uzantılar (fin, iticilerin dış hacmi) | **Kanatlar ve gövde kaldırması tamam**. İtici dış hacmi yok |
 | O7 | Diğer robot kategorileri, STEP okuma, HTML rapor, arayüz | |
 
 ## 1. Doğruluk hedefi: neyi %100'e yakın yapabiliriz?
@@ -177,8 +177,9 @@ telif hakkı var).
 | Çapraz akış eklenmiş kütle | Y_vdot, Z_wdot -%13; K_pdot +%7 (Prestero'nun teorisine göre) |
 | Çapraz akış sönümü | Y_v\|v\|, Z_w\|w\| -%2; M_q\|q\|, N_r\|r\| -%20 (teoriye göre) |
 | Kanat kaldırması | Tezin formülüne göre -%11 (Helmbold ve Hoerner eğimi farkı) |
-| **Zayıf** | X_udot +%49, M_qdot -%35, çapraz terimler -%70, gövde kaldırması yok |
-| **Davranış** | 4° dümende dönüş: deniz testi ~10°/s, bizim CAD modeli 27,9°/s (+%179). Prestero'nun denize göre yaptığı sönüm düzeltmeleri uygulanınca 8,1°/s (-%19) |
+| Gövde kaldırması (Hoerner) | Tezin formülüyle %0 (c_yd_β = 1,20 birebir); tezin tablosuna göre -%21; moment -%19 / +%31 |
+| **Zayıf** | X_udot +%49, M_qdot -%35, çapraz terimler -%70 |
+| **Davranış** | 4° dümende dönüş: deniz testi ~10°/s. Bizim CAD modeli: gövde kaldırması olmadan 27,9°/s (+%179), **gövde kaldırmasıyla 15,9°/s (+%59)**. Prestero'nun deniz sönüm düzeltmeleriyle 7,0°/s (-%30) |
 
 **Ana sonuç:** CAD'den hesaplanan terimler Prestero'nun kendi teorik hesabıyla büyük ölçüde
 örtüşüyor. Ama hem onun teorisi hem bizimki gerçek sönümü yaklaşık 10 kat küçük tahmin ediyor;
@@ -192,6 +193,20 @@ yaklaşıyor. Bu, O3'ün (havuz kalibrasyonu) gerekli olduğunu sayıyla göster
 - N_uudr tezde -6,15 (Y_uudr +9,64 ile tutarlı, kanatlar arkada). AUVsim'de +6,15.
 - Kanat kaldırma tablosu (9,64) tezin kendi formülünden (21,4) 2,2 kat küçük.
 
-**Sırada (öneri):** gövde kaldırması (Hoerner), X_udot ve M_qdot farkının nedenini bulmak,
-sonra O3 kalibrasyon. Kalibrasyonun ilk testi şu olabilir: Prestero'nun deniz verisine
+**O3 kalibrasyon (tamam):** test kaydı (CSV) -> CAD değerlerine göre çarpanlar (sönüm 6
+eksen, eklenmiş kütle, kanat ve gövde kaldırması). Yöntem: Gauss gürültülü en büyük sonsal
+(MAP) uydurma; CAD belirsizliği ön bilgi, belirsizlik Jacobian'dan. Sonuç araç dosyasına
+`calibration:` bloğu olarak yazılır; `build`, `matlab`, `wizard` onu kullanır.
+Sanal havuz doğrulaması (`docs/dogrulama_kalibrasyon.md`): REMUS'un denize göre ayarlı
+katsayıları iki 40 s'lik test kaydından %0–4 hatayla geri bulundu; görülmemiş kontrol
+kaydında uyum %-171'den %84'e çıktı; bu, gerçek aracın kendi modelinin gürültülü veriye
+ulaşabildiği tavanla (%84) her kanalda aynı. Bu algoritmayı doğrular; gerçek araç için havuz
+verisi gerekir.
+
+**O4 ölçüm sihirbazı (tamam):** her belirsiz parametre 1σ oynatılır; son hız, dönüş hızı,
+yuvarlanma/yunuslama periyodu ve net kaldırmaya etkisine göre sıralanır, her biri için en
+ucuz ölçüm önerilir. Ölçülen değerler kendiliğinden listenin altına iner.
+
+**Kalan isteğe bağlılar:** O1 Gazebo çıktısı, O2 Capytaine (BEM), O5'in ikinci basamağı
+BlueROV2, O7 diğer robot kategorileri. Ayrıca X_udot ve M_qdot farkının nedeni. Kalibrasyonun ilk testi şu olabilir: Prestero'nun deniz verisine
 benzeyen sentetik veriden sönümü geri bulmak.

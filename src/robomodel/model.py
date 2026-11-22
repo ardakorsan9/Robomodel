@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import trimesh
@@ -11,16 +11,17 @@ from robomodel.added_mass import (
     ellipsoid_added_mass_parameter,
     strip_theory_parameter,
 )
+from robomodel.body_lift import body_lift
 from robomodel.damping import Damping, estimate_damping
 from robomodel.dynamics import Dynamics
 from robomodel.fins import FinModel, fin_model
 from robomodel.geometry import build_mesh
 from robomodel.hydrostatics import Hydrostatics, hydrostatics
-from robomodel.parameter import Parameter
+from robomodel.parameter import Parameter, Source
 from robomodel.rigid_body import MassProperties, mass_properties, rigid_body_mass_matrix
 from robomodel.sections import Sections, slice_hull
 from robomodel.thrusters import allocation_matrix, thrust_rel_sigma
-from robomodel.vehicle import Vehicle
+from robomodel.vehicle import Calibration, Vehicle
 
 NEUTRAL_BUOYANCY_TOLERANCE = 0.02  # |W - B| / B above this gets a warning
 
@@ -37,6 +38,7 @@ class VehicleModel:
     damping: Damping
     b_thr: np.ndarray  # 6 x n thruster allocation (per newton of thrust)
     fins: FinModel
+    body_lift: Parameter | None = None  # 6x6, multiply by |u|; None for stubby hulls
     warnings: list[str] = field(default_factory=list)
 
     def dynamics(self) -> Dynamics:
@@ -50,7 +52,8 @@ class VehicleModel:
             r_g=np.asarray(self.mass.r_g.value),
             r_b=np.asarray(self.statics.r_b.value),
             b_thr=self.b_thr,
-            d_fin=np.asarray(self.fins.d_fin.value),
+            d_fin=np.asarray(self.fins.d_fin.value)
+            + (0 if self.body_lift is None else np.asarray(self.body_lift.value)),
             b_fin=self.fins.b_fin,
         )
 
@@ -81,7 +84,7 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
             m_a.unit,
             m_a.note + "; fins as flat plates",
         )
-    return VehicleModel(
+    model = VehicleModel(
         vehicle=vehicle,
         hull=hull,
         sections=sections,
@@ -92,7 +95,58 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
         damping=damping,
         b_thr=allocation_matrix(vehicle.thrusters),
         fins=fins,
+        body_lift=body_lift(sections, float(hull.bounds[1, 0]), rho),
         warnings=_warnings(vehicle, props, statics),
+    )
+    if not vehicle.calibration.is_identity:
+        model = apply_calibration(model, vehicle.calibration)
+    return model
+
+
+def _scaled(param: Parameter, scale, rel_sigma, note: str) -> Parameter:
+    """Multiply a parameter by fitted scale factors; it becomes a calibrated value."""
+    value = np.asarray(param.value, dtype=float) * scale
+    sigma = np.abs(value) * rel_sigma
+    if np.ndim(value) == 0:
+        value, sigma = float(value), float(sigma)
+    return Parameter(value, sigma, Source.CALIBRATED, param.unit, note)
+
+
+def apply_calibration(model: VehicleModel, cal: Calibration) -> VehicleModel:
+    """Apply scale factors from test data. Cheap: no geometry is recomputed."""
+    note = "calibrated to test data" + (f" ({cal.note})" if cal.note else "")
+    d = model.damping
+    damping = replace(
+        d,
+        linear=_scaled(d.linear, cal.damping, cal.damping_sigma, note),
+        quadratic=_scaled(d.quadratic, cal.damping, cal.damping_sigma, note),
+    )
+    m_a = model.m_a
+    if not np.allclose(cal.added_mass, 1):
+        diag = np.sqrt(cal.added_mass)  # scale rows and columns: diagonal x s, couplings x sqrt
+        m_a = _scaled(
+            m_a,
+            np.outer(diag, diag),
+            np.sqrt(np.add.outer(cal.added_mass_sigma, cal.added_mass_sigma) / 2),
+            note,
+        )
+    fins = model.fins
+    if cal.fin_lift != 1:
+        fins = replace(
+            fins,
+            d_fin=_scaled(fins.d_fin, cal.fin_lift, cal.fin_lift_sigma, note),
+            b_fin=fins.b_fin * cal.fin_lift,
+        )
+    lift = model.body_lift
+    if lift is not None and cal.body_lift != 1:
+        lift = _scaled(lift, cal.body_lift, cal.body_lift_sigma, note)
+    return replace(
+        model,
+        damping=damping,
+        m_a=m_a,
+        fins=fins,
+        body_lift=lift,
+        vehicle=replace(model.vehicle, calibration=cal),
     )
 
 
@@ -159,6 +213,7 @@ def to_dict(model: VehicleModel) -> dict:
         "D_fin": _p(model.fins.d_fin),
         "B_fin": np.round(model.fins.b_fin, 12).tolist(),
         "fin_controls": list(model.fins.control_names),
+        "D_body_lift": _p(model.body_lift) if model.body_lift is not None else None,
         "warnings": model.warnings,
     }
 
@@ -215,8 +270,8 @@ def report(model: VehicleModel) -> str:
                 f"  {i}: {t.model:<8} +{t.max_forward:g} / -{t.max_reverse:g} N  B column [{col}]"
             )
 
-    params = (m.r_g, s.volume, model.m_a, d.linear, d.quadratic)
-    notes = {p.note for p in params if p.note}
+    params = (m.r_g, s.volume, model.m_a, d.linear, d.quadratic, model.body_lift)
+    notes = {p.note for p in params if p is not None and p.note}
     if notes:
         lines += ["", "Notes:"] + [f"  - {n}" for n in sorted(notes)]
     if model.warnings:

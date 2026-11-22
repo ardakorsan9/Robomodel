@@ -44,7 +44,10 @@ REMUS Autonomous Underwater Vehicle*, MIT/WHOI yüksek lisans tezi, 2001.
 | Kontrol | `N_uudr` | -12.2 | -13.6 | -11% | -6.15 | +98% | denk. 4.45, Tablo C.10 |  |
 | Kontrol | `Z_uuds` | -19.1 | -21.4 | -11% | -9.64 | +98% | denk. 4.44, Tablo C.10 |  |
 | Kontrol | `M_uuds` | -12.2 | -13.6 | -11% | -6.15 | +98% | denk. 4.45, Tablo C.10 |  |
-| Gövde kaldırması | `Y_uvl` | – | -19 | – | -19 | – | Tablo 4.2 - C.10 | robomodel'de yok (Hoerner gövde kaldırması); Y_uv = -28,6 toplamından kanat payı çıkarıldı |
+| Gövde kaldırması | `Y_uvl` | -22.5 | -22.5 | -0% | -28.6 | -21% | denk. 4.34, Tablo C.4 | teori: tezin formülü; tablo formülden 1,27 kat büyük |
+| Gövde kaldırması | `Z_uwl` | -22.5 | -22.5 | -0% | -28.6 | -21% | denk. 4.34, Tablo C.4 |  |
+| Gövde kaldırması | `N_uvl` | +5.87 | +7.24 | -19% | +4.47 | +31% | denk. 4.36, Tablo C.4 | basınç merkezi: bizde -0,26 m (burundan 0,65 L), tezde -0,321 m |
+| Gövde kaldırması | `M_uwl` | -5.87 | -7.24 | -19% | -4.47 | +31% | denk. 4.36, Tablo C.4 |  |
 
 ## Davranış: deniz testi
 
@@ -53,8 +56,8 @@ REMUS Autonomous Underwater Vehicle*, MIT/WHOI yüksek lisans tezi, 2001.
 | Model | Dönüş hızı (°/s) | Deniz testine göre fark |
 |---|---|---|
 | Deniz testi (Prestero 7.5.1, yaklaşık) | 10.0 | – |
-| robomodel, sadece CAD | 27.9 | +179% |
-| robomodel, Prestero'nun sönüm düzeltmeleriyle (Tablo 8.2) | 8.1 | -19% |
+| robomodel, sadece CAD | 15.9 | +59% |
+| robomodel, Prestero'nun sönüm düzeltmeleriyle (Tablo 8.2) | 7.0 | -30% |
 
 Deniz testindeki değer bir grafikten okunmuş yaklaşık değerdir ("approximately 10
 degrees/second"); ±%20 civarında belirsizlik kabul edilmeli.
