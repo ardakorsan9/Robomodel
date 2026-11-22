@@ -1,0 +1,14 @@
+# Example torpedo-like AUV: cylinder hull, one battery, one stern thruster.
+# Positions are in the body frame: x forward, y right, z down (metres).
+name: test_auv
+category: underwater
+mass: 45.0
+water: fresh
+geometry:
+  primitive: cylinder
+  length: 1.6
+  radius: 0.095
+parts:
+  - {name: battery, mass: 6.0, position: [0.1, 0.0, 0.04], shape: box, size: [0.3, 0.1, 0.06]}
+thrusters:
+  - {model: T200, position: [-0.85, 0.0, 0.0], direction: [1, 0, 0]}

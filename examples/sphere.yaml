@@ -1,0 +1,10 @@
+# Test body: a sphere of radius 0.1 m, close to neutrally buoyant in sea water.
+# Volume = 4/3 * pi * 0.1^3 = 0.0041888 m^3, so neutral mass = 1025 * V = 4.2935 kg.
+# Its added mass is known exactly (0.5 * rho * V), which makes it the first test case.
+name: sphere
+category: underwater
+mass: 4.29        # kg
+water: sea        # sea (1025 kg/m^3), fresh (1000) or a number
+geometry:
+  primitive: sphere
+  radius: 0.1     # m

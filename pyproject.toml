@@ -1,0 +1,38 @@
+[project]
+name = "robomodel"
+version = "0.1.0"
+description = "Build mathematical models (Fossen 6-DOF) of robots from CAD and a vehicle description"
+readme = "README.md"
+authors = [
+    { name = "Arda Onur Kirik" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.5.5",
+    "pyyaml>=6.0.4",
+    "scipy>=1.18.1",
+    "shapely>=2.2.0",
+    "trimesh>=5.2.1",
+]
+
+[project.scripts]
+robomodel = "robomodel.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

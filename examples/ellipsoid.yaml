@@ -1,0 +1,14 @@
+# Test body: prolate spheroid, length/diameter = 5 (a = 0.5 m, b = c = 0.1 m).
+# Lamb's coefficients for L/D = 5: k1 = 0.059 (surge), k2 = 0.895 (sway, heave),
+# k' = 0.70 (pitch, yaw). A battery below the centre makes it self-righting.
+name: spheroid_ld5
+category: underwater
+mass: 21.4
+water: sea
+geometry:
+  primitive: ellipsoid
+  a: 0.5
+  b: 0.1
+  c: 0.1
+parts:
+  - {name: ballast, mass: 3.0, position: [0.0, 0.0, 0.05]}

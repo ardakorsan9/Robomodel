@@ -1,0 +1,16 @@
+# REMUS 100 hull shape from the Myring parameters in Prestero (2001), without the nose
+# and tail offsets, so it is slightly longer than the real 1.33 m vehicle.
+# Values (and the mass, W ~ 299 N) are from memory of the thesis: check them against the
+# thesis in phase 3 before using this file for validation.
+name: remus_hull
+category: underwater
+mass: 30.48
+water: sea
+geometry:
+  primitive: myring
+  a: 0.191      # nose length, m
+  b: 0.654      # mid-body length, m
+  c: 0.541      # tail length, m
+  d: 0.191      # max diameter, m
+  n: 2.0        # nose exponent
+  theta: 0.436  # tail half-angle, rad
