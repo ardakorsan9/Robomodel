@@ -22,6 +22,9 @@ PRIMITIVES = {
     "cylinder": ("length", "radius"),  # axis along x
     "myring": ("a", "b", "c", "d", "n", "theta"),  # REMUS-style hull, see Prestero 2001
 }
+# Optional dimensions and their defaults.
+OPTIONAL_DIMS = {"myring": {"a_offset": 0.0, "c_offset": 0.0}}
+ORIGINS = ("center", "buoyancy")
 LENGTH_UNITS = {"m": 1.0, "mm": 1e-3, "cm": 1e-2}
 
 # Shapes for internal parts (batteries, electronics tubes); they set the part's own inertia.
@@ -53,6 +56,9 @@ class Geometry:
     dims: dict[str, float] = field(default_factory=dict)
     file: Path | None = None
     unit_scale: float = 1.0  # multiply mesh coordinates by this to get metres
+    # Body origin: "center" keeps primitives centred on their bounding box (mesh files keep
+    # their own origin); "buoyancy" moves the origin to the centre of buoyancy.
+    origin: str = "center"
 
 
 @dataclass(frozen=True)
@@ -75,6 +81,29 @@ class Thruster:
 
 
 @dataclass(frozen=True)
+class Fin:
+    """A thin lifting surface (fin, rudder, stern plane) outside the hull.
+
+    The fin pushes water along `normal`; `position` is its centre of pressure.
+    """
+
+    name: str
+    position: np.ndarray  # body frame, m
+    normal: np.ndarray  # unit vector, the direction the lift acts in
+    area: float  # planform area of one fin, m^2
+    span: float  # root to tip, m
+    control: bool = False  # True: the fin can be turned (rudder, stern plane)
+
+
+@dataclass(frozen=True)
+class Measured:
+    """Values measured on the real vehicle; they replace the CAD estimates."""
+
+    r_g: np.ndarray | None = None  # centre of gravity, m
+    inertia_g: np.ndarray | None = None  # 3x3 inertia about the CG, kg m^2
+
+
+@dataclass(frozen=True)
 class Vehicle:
     name: str
     category: str
@@ -83,6 +112,8 @@ class Vehicle:
     geometry: Geometry
     parts: tuple[Part, ...] = ()
     thrusters: tuple[Thruster, ...] = ()
+    fins: tuple[Fin, ...] = ()
+    measured: Measured = field(default_factory=Measured)
 
 
 def load_vehicle(path: str | Path) -> Vehicle:
@@ -125,6 +156,13 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         if (t := _thruster(raw, i, problems)) is not None
     )
 
+    fins = tuple(
+        f
+        for i, raw in enumerate(_list(data.get("fins"), "fins", problems))
+        if (f := _fin(raw, i, problems)) is not None
+    )
+    measured = _measured(data.get("measured"), problems)
+
     if mass is not None and parts:
         parts_mass = sum(p.mass for p in parts)
         if parts_mass > mass:
@@ -142,6 +180,8 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         geometry=geometry,
         parts=parts,
         thrusters=thrusters,
+        fins=fins,
+        measured=measured,
     )
 
 
@@ -191,6 +231,10 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
     if has_primitive == has_file:
         problems.append("'geometry' needs exactly one of 'primitive' or 'file'")
         return None
+    origin = raw.get("origin", "center")
+    if origin not in ORIGINS:
+        problems.append(f"'geometry.origin' must be one of {list(ORIGINS)}, got {origin!r}")
+        return None
 
     if has_file:
         unit = raw.get("unit", "m")
@@ -201,7 +245,7 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
         if not file.is_file():
             problems.append(f"geometry file not found: {file}")
             return None
-        return Geometry(file=file, unit_scale=LENGTH_UNITS[unit])
+        return Geometry(file=file, unit_scale=LENGTH_UNITS[unit], origin=origin)
 
     kind = raw["primitive"]
     if kind not in PRIMITIVES:
@@ -214,7 +258,13 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
             dims[key] = value
     if len(dims) != len(PRIMITIVES[kind]):
         return None
-    return Geometry(primitive=kind, dims=dims)
+    for key, default in OPTIONAL_DIMS.get(kind, {}).items():
+        value = raw.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            problems.append(f"'geometry.{key}' must be a number >= 0, got {value!r}")
+            return None
+        dims[key] = float(value)
+    return Geometry(primitive=kind, dims=dims, origin=origin)
 
 
 def _part(raw: object, i: int, problems: list[str]) -> Part | None:
@@ -292,3 +342,57 @@ def _thruster(raw: object, i: int, problems: list[str]) -> Thruster | None:
         max_reverse=limits[1],
         preset=uses_preset,
     )
+
+
+def _fin(raw: object, i: int, problems: list[str]) -> Fin | None:
+    if not isinstance(raw, dict):
+        problems.append(f"fins[{i}] must be a mapping with position, normal, area, span")
+        return None
+    position = _vector(raw.get("position"), f"fins[{i}].position", problems)
+    normal = _vector(raw.get("normal"), f"fins[{i}].normal", problems)
+    area = _positive(raw.get("area"), f"fins[{i}].area", problems)
+    span = _positive(raw.get("span"), f"fins[{i}].span", problems)
+    control = raw.get("control", False)
+    if not isinstance(control, bool):
+        problems.append(f"fins[{i}].control must be true or false")
+        return None
+    if normal is not None:
+        norm = np.linalg.norm(normal)
+        if norm < 1e-9:
+            problems.append(f"fins[{i}].normal must not be zero")
+            return None
+        normal = normal / norm
+    if any(v is None for v in (position, normal, area, span)):
+        return None
+    return Fin(str(raw.get("name", f"fin{i}")), position, normal, area, span, control)
+
+
+def _measured(raw: object, problems: list[str]) -> Measured:
+    if raw is None:
+        return Measured()
+    if not isinstance(raw, dict):
+        problems.append("'measured' must be a mapping (r_g, inertia_g)")
+        return Measured()
+    r_g = _vector(raw["r_g"], "measured.r_g", problems) if "r_g" in raw else None
+    inertia = None
+    if "inertia_g" in raw:
+        value = np.asarray(raw["inertia_g"], dtype=float) if _numeric(raw["inertia_g"]) else None
+        if value is not None and value.shape == (3,):
+            value = np.diag(value)
+        if value is None or value.shape != (3, 3) or np.any(np.diag(value) <= 0):
+            problems.append(
+                "'measured.inertia_g' must be [Ixx, Iyy, Izz] or a 3x3 matrix, positive diagonal"
+            )
+        elif not np.allclose(value, value.T):
+            problems.append("'measured.inertia_g' must be symmetric")
+        else:
+            inertia = value
+    return Measured(r_g=r_g, inertia_g=inertia)
+
+
+def _numeric(value: object) -> bool:
+    try:
+        np.asarray(value, dtype=float)
+    except (TypeError, ValueError):
+        return False
+    return True

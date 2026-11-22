@@ -27,7 +27,7 @@ geçmeden sonraki aşamaya geçilmez.
 | O3 | Havuz verisiyle kalibrasyon | Sönümlemeyi %90+ uyuma çıkarmanın tek yolu |
 | O4 | Ölçüm sihirbazı | "Şunu ölç, doğruluk şu kadar artar" |
 | O5 | REMUS 100 / BlueROV2 doğrulaması | Yayınlanmış değerlerle kanıt; kaynak verisi gerekli |
-| O6 | Kanat ve uzantılar (fin, iticilerin dış hacmi) | Torpido araçlarda yunuslama ve dönme için önemli |
+| O6 | Kanat ve uzantılar (fin, iticilerin dış hacmi) | **Kanatlar tamam** (kaldırma, eklenmiş kütle, dümen). Gövde kaldırması ve itici dış hacmi yok |
 | O7 | Diğer robot kategorileri, STEP okuma, HTML rapor, arayüz | |
 
 ## 1. Doğruluk hedefi: neyi %100'e yakın yapabiliriz?
@@ -161,4 +161,37 @@ kategoride hedef, onlarla uyumlu URDF üretmek; yeniden yazmak değil.
 - Sönümleme el kitabı tahmini. Doğru değer için O3 (havuz kalibrasyonu) gerekir.
 - T200 itki sınırları hafızadan, datasheet'le kontrol edilmeli.
 
-**Sırada:** isteğe bağlı özellikler (O1–O7) konuşulacak.
+**O6 kanatlar (tamam):** küçük açılarda kaldırma (Helmbold eğimi, gövde yansıma düzlemi),
+düz plaka eklenmiş kütlesi, kontrol kanadı girişi (B_fin). Testler: kanatlar sapmayı
+söndürüyor, kanatsız gövdenin sapma kararsızlığını gideriyor, dümen doğru yöne çeviriyor.
+`measured:` alanıyla ölçülen kütle merkezi ve eylemsizlik CAD tahmininin yerine geçiyor.
+
+**O5 REMUS 100 doğrulaması (tamam):** tam tablo `docs/dogrulama_remus100.md`,
+kalıcı testler `tests/test_remus_validation.py`. Kaynak: Prestero 2001 (MIT tezi; repoda yok,
+telif hakkı var).
+
+| Grup | Sonuç |
+|---|---|
+| Hidrostatik (A) | Hacim %0, kaldırma tahmine göre +%1, ölçüme göre +%4; kaldırma merkezi ölçüme göre %1 |
+| Eksenel sürükleme | C_d 0,196; denizde ölçülen 0,2 ile -%2 |
+| Çapraz akış eklenmiş kütle | Y_vdot, Z_wdot -%13; K_pdot +%7 (Prestero'nun teorisine göre) |
+| Çapraz akış sönümü | Y_v\|v\|, Z_w\|w\| -%2; M_q\|q\|, N_r\|r\| -%20 (teoriye göre) |
+| Kanat kaldırması | Tezin formülüne göre -%11 (Helmbold ve Hoerner eğimi farkı) |
+| **Zayıf** | X_udot +%49, M_qdot -%35, çapraz terimler -%70, gövde kaldırması yok |
+| **Davranış** | 4° dümende dönüş: deniz testi ~10°/s, bizim CAD modeli 27,9°/s (+%179). Prestero'nun denize göre yaptığı sönüm düzeltmeleri uygulanınca 8,1°/s (-%19) |
+
+**Ana sonuç:** CAD'den hesaplanan terimler Prestero'nun kendi teorik hesabıyla büyük ölçüde
+örtüşüyor. Ama hem onun teorisi hem bizimki gerçek sönümü yaklaşık 10 kat küçük tahmin ediyor;
+Prestero da bunu deniz verisiyle düzeltmek zorunda kalmış. Yani sadece CAD'den çıkan model
+dönüş hızını yaklaşık 3 kat fazla buluyor; sönüm kalibre edilince deniz testine ±%20 içinde
+yaklaşıyor. Bu, O3'ün (havuz kalibrasyonu) gerekli olduğunu sayıyla gösteriyor.
+
+**Tezde bulunan tutarsızlıklar** (`auv_gazebo` README'deki açık soruları açıklıyor):
+- Tablo 8.2'ye göre Y_v\|v\| ve Z_w\|w\| ikisi de 10 kat büyütülmüş, ama Tablo C.2'de
+  Y_v\|v\| = -1310, Z_w\|w\| = -131. Muhtemelen tablo hatası.
+- N_uudr tezde -6,15 (Y_uudr +9,64 ile tutarlı, kanatlar arkada). AUVsim'de +6,15.
+- Kanat kaldırma tablosu (9,64) tezin kendi formülünden (21,4) 2,2 kat küçük.
+
+**Sırada (öneri):** gövde kaldırması (Hoerner), X_udot ve M_qdot farkının nedenini bulmak,
+sonra O3 kalibrasyon. Kalibrasyonun ilk testi şu olabilir: Prestero'nun deniz verisine
+benzeyen sentetik veriden sönümü geri bulmak.

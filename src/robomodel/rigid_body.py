@@ -19,6 +19,8 @@ from robomodel.vehicle import Part, Vehicle
 MASS_REL_SIGMA = 0.01  # typical scale accuracy
 UNIFORM_INERTIA_REL_SIGMA = 0.30  # real mass is not spread evenly over the hull
 UNIFORM_COG_SIGMA_FRACTION = 0.05  # of the hull's largest dimension, per axis
+MEASURED_COG_SIGMA = 0.002  # m, a careful balance test
+MEASURED_INERTIA_REL_SIGMA = 0.05  # pendulum test
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,13 @@ def mass_properties(vehicle: Vehicle, hull: trimesh.Trimesh) -> MassProperties:
 
     r_g = first_moment / vehicle.mass
     inertia_g = inertia_o - point_inertia(vehicle.mass, r_g)
+    measured = vehicle.measured
+    if measured.r_g is not None:
+        r_g = measured.r_g
+    if measured.inertia_g is not None:
+        inertia_g = measured.inertia_g
+    if measured.r_g is not None or measured.inertia_g is not None:
+        inertia_o = inertia_g + point_inertia(vehicle.mass, r_g)
 
     # Uncertainty: the uniform-hull assumption dominates when the hull carries the mass.
     hull_share = hull_mass / vehicle.mass
@@ -89,15 +98,24 @@ def mass_properties(vehicle: Vehicle, hull: trimesh.Trimesh) -> MassProperties:
     )
     source = Source.ASSUMED if hull_share > 0 else Source.MEASURED
 
-    def inertia_param(tensor: np.ndarray) -> Parameter:
+    def inertia_param(tensor: np.ndarray, is_measured: bool) -> Parameter:
+        if is_measured:
+            return Parameter.relative(
+                tensor, MEASURED_INERTIA_REL_SIGMA, Source.MEASURED, "kg m^2", "measured"
+            )
         sigma = np.abs(tensor) * UNIFORM_INERTIA_REL_SIGMA * hull_share
         return Parameter(tensor, sigma, source, "kg m^2", note)
 
+    if measured.r_g is not None:
+        r_g_param = Parameter(r_g, np.full(3, MEASURED_COG_SIGMA), Source.MEASURED, "m", "measured")
+    else:
+        r_g_param = Parameter(r_g, cog_sigma, source, "m", note)
+    inertia_measured = measured.inertia_g is not None
     return MassProperties(
         mass=Parameter.relative(vehicle.mass, MASS_REL_SIGMA, Source.MEASURED, "kg"),
-        r_g=Parameter(r_g, cog_sigma, source, "m", note),
-        inertia_o=inertia_param(inertia_o),
-        inertia_g=inertia_param(inertia_g),
+        r_g=r_g_param,
+        inertia_o=inertia_param(inertia_o, inertia_measured),
+        inertia_g=inertia_param(inertia_g, inertia_measured),
     )
 
 

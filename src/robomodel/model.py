@@ -13,6 +13,7 @@ from robomodel.added_mass import (
 )
 from robomodel.damping import Damping, estimate_damping
 from robomodel.dynamics import Dynamics
+from robomodel.fins import FinModel, fin_model
 from robomodel.geometry import build_mesh
 from robomodel.hydrostatics import Hydrostatics, hydrostatics
 from robomodel.parameter import Parameter
@@ -35,6 +36,7 @@ class VehicleModel:
     m_a: Parameter  # 6x6 added mass (positive)
     damping: Damping
     b_thr: np.ndarray  # 6 x n thruster allocation (per newton of thrust)
+    fins: FinModel
     warnings: list[str] = field(default_factory=list)
 
     def dynamics(self) -> Dynamics:
@@ -48,6 +50,8 @@ class VehicleModel:
             r_g=np.asarray(self.mass.r_g.value),
             r_b=np.asarray(self.statics.r_b.value),
             b_thr=self.b_thr,
+            d_fin=np.asarray(self.fins.d_fin.value),
+            b_fin=self.fins.b_fin,
         )
 
 
@@ -68,6 +72,15 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
         m_a = strip_theory_parameter(sections, float(hull.volume), rho)
 
     damping = estimate_damping(sections, rho)
+    fins = fin_model(vehicle.fins, rho)
+    if vehicle.fins:  # fin added mass adds to the hull's, with the hull's uncertainty
+        m_a = Parameter(
+            m_a.value + fins.m_a,
+            m_a.sigma + 0.3 * np.abs(fins.m_a),
+            m_a.source,
+            m_a.unit,
+            m_a.note + "; fins as flat plates",
+        )
     return VehicleModel(
         vehicle=vehicle,
         hull=hull,
@@ -78,6 +91,7 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
         m_a=m_a,
         damping=damping,
         b_thr=allocation_matrix(vehicle.thrusters),
+        fins=fins,
         warnings=_warnings(vehicle, props, statics),
     )
 
@@ -142,6 +156,9 @@ def to_dict(model: VehicleModel) -> dict:
             for t in v.thrusters
         ],
         "B_thr": np.round(model.b_thr, 12).tolist(),
+        "D_fin": _p(model.fins.d_fin),
+        "B_fin": np.round(model.fins.b_fin, 12).tolist(),
+        "fin_controls": list(model.fins.control_names),
         "warnings": model.warnings,
     }
 
@@ -181,6 +198,14 @@ def report(model: VehicleModel) -> str:
     row("D linear", d.linear)
     row("D quadratic", d.quadratic)
     lines.append(f"  {'surge C_D':<16}{d.axial_cd:.3g} (on frontal area)")
+
+    if model.vehicle.fins:
+        lines += ["", "Fins (lift grows with speed: force = D_fin x |u| x velocity)"]
+        for fin, cla in zip(model.vehicle.fins, model.fins.lift_slopes, strict=True):
+            kind = "control" if fin.control else "fixed"
+            lines.append(
+                f"  {fin.name:<12} {kind:<8} S = {fin.area:g} m^2, C_L_alpha = {cla:.3g} /rad"
+            )
 
     if model.vehicle.thrusters:
         lines += ["", "Thrusters"]

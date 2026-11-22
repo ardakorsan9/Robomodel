@@ -58,13 +58,17 @@ uv run pytest
 | `src/robomodel/added_mass.py` | Eklenmiş kütle: elipsoitte Lamb (kesin), diğer gövdelerde şerit teorisi |
 | `src/robomodel/damping.py` | Sönümleme tahmini (Hoerner): doğrusal + karesel |
 | `src/robomodel/thrusters.py` | İtici eğrisi ve dağıtım matrisi B |
+| `src/robomodel/fins.py` | Kanatlar: kaldırma (Helmbold), eklenmiş kütle, dümen girişi |
 | `src/robomodel/dynamics.py` | Fossen 6-DOF denklemleri, simülatör, doğrusallaştırma |
 | `src/robomodel/matlab_export.py` | MATLAB dosyaları |
 | `src/robomodel/model.py` | Hepsini birleştirir, rapor ve YAML çıktısı |
 | `src/robomodel/cli.py` | Komut satırı (`check`, `build`, `matlab`) |
 | `examples/*.yaml` | Küre, elipsoit (L/D = 5), REMUS gövdesi, basit AUV |
 | `tests/test_physics.py` | Geometri, kütle, hidrostatik, Lamb: analitik cevaplara karşı |
-| `tests/test_dynamics.py` | Şerit teorisi, sönümleme, iticiler, simülatör, MATLAB çıktısı |
+| `tests/test_dynamics.py` | Şerit teorisi, sönümleme, iticiler, kanatlar, simülatör, MATLAB |
+| `tests/test_remus_validation.py` | REMUS 100: Prestero 2001 ile gösterilen uyumu korur |
+| `validation/remus100.py` | REMUS 100 karşılaştırması; `docs/dogrulama_remus100.md` raporunu yazar |
+| `docs/dogrulama_remus100.md` | REMUS 100 doğrulama raporu |
 | `docs/eksenler.md` | Eksen ve işaret kuralları. Kod yazmadan önce oku |
 | `docs/plan.md` | Fazlar, saat tahminleri, doğrulama merdiveni |
 
@@ -85,6 +89,12 @@ parts:                      # isteğe bağlı: ağır iç parçalar
 thrusters:
   # T200 için itki sınırları hazır (kontrol edilmeli); başka modelde max_forward/max_reverse ver (N)
   - {model: T200, position: [-0.85, 0.0, 0.0], direction: [1, 0, 0]}
+fins:                       # isteğe bağlı: kanat, dümen, derinlik dümeni
+  # normal: kanadın suyu ittiği yön; control: true ise açısı değiştirilebilir (dümen)
+  - {name: rudder_top, position: [-0.7, 0, -0.14], normal: [0, 1, 0], area: 0.0066, span: 0.08, control: true}
+measured:                   # isteğe bağlı: araç üzerinde ölçülen değerler CAD tahmininin yerine geçer
+  r_g: [0.0, 0.0, 0.02]     # denge testiyle kütle merkezi, m
+  inertia_g: [0.18, 3.4, 3.4]   # sarkaç testiyle eylemsizlik (kütle merkezi etrafında), kg m^2
 ```
 
 Konumlar gövde ekseninde, metre cinsinden: x ileri, y sağ, z aşağı.

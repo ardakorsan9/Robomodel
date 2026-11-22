@@ -66,6 +66,7 @@ def write_matlab(model: VehicleModel, out_dir: str | Path, speed: float = 0.0) -
         written.append(path)
 
     thr = model.vehicle.thrusters
+    fin_names = ", ".join(model.fins.control_names) or "none"
     write(
         f"{name}_params.m",
         f"""function p = {name}_params()
@@ -86,6 +87,9 @@ p.r_b = {_mat(dyn.r_b.reshape(-1, 1))};   % centre of buoyancy, m
 p.B_thr = {_mat(dyn.b_thr) if thr else "zeros(6, 0)"};   % tau = B_thr * f, f in N
 p.f_max_forward = {_mat([[t.max_forward for t in thr]]) if thr else "zeros(1, 0)"};
 p.f_max_reverse = {_mat([[t.max_reverse for t in thr]]) if thr else "zeros(1, 0)"};
+p.D_fin = {_mat(dyn.d_fin)};   % fin lift damping, multiplied by |u|
+p.B_fin = {_mat(dyn.b_fin) if dyn.b_fin.shape[1] else "zeros(6, 0)"};   % x u|u| x delta
+p.delta = zeros({dyn.b_fin.shape[1]}, 1);   % control fin deflections (rad): {fin_names}
 end
 """,
     )
@@ -101,9 +105,10 @@ phi = eta(4); theta = eta(5); psi = eta(6);
 
 M = p.M_RB + p.M_A;
 C = coriolis(M, nu);
-D = p.D_lin .* nu + p.D_quad .* abs(nu) .* nu;
+D = p.D_lin .* nu + p.D_quad .* abs(nu) .* nu + abs(nu(1)) * p.D_fin * nu;
+tau_fin = nu(1) * abs(nu(1)) * p.B_fin * p.delta;   % control fins
 g = restoring(phi, theta, p);
-nu_dot = M \\ (tau(:) - C * nu - D - g);
+nu_dot = M \\ (tau(:) + tau_fin - C * nu - D - g);
 eta_dot = [Rzyx(phi, theta, psi) * nu(1:3); Tzyx(phi, theta) * nu(4:6)];
 xdot = [eta_dot; nu_dot];
 end

@@ -1,0 +1,31 @@
+# REMUS 100 AUV, from Prestero (2001), "Verification of a Six-Degree of Freedom Simulation
+# Model for the REMUS Autonomous Underwater Vehicle", MIT/WHOI MSc thesis.
+# https://dspace.mit.edu/handle/1721.1/65068
+# Used to validate robomodel against published values: validation/remus100.py
+name: remus100
+category: underwater
+mass: 30.49          # W = 299 N (Table 2.3) / 9.80665
+water: 1030          # seawater density, kg/m^3 (Table 2.7)
+geometry:
+  primitive: myring  # Table 2.1
+  a: 0.191           # nose length
+  a_offset: 0.0165   # missing nose length
+  b: 0.654           # mid-body length
+  c: 0.541           # tail length
+  c_offset: 0.0368   # missing tail length
+  n: 2.0
+  theta: 0.436
+  d: 0.191
+  origin: buoyancy   # Prestero's coefficients are about the centre of buoyancy (Sec. 2.6)
+measured:            # Tables 2.5 and 2.6, about the centre of buoyancy
+  r_g: [0.0, 0.0, 0.0196]
+  inertia_g: [0.177, 3.45, 3.45]
+# Four identical fins in a cross at x = -0.638 m (Table 2.2: S = 6.65e-3 m^2, span 8.57e-2 m).
+# Centre of pressure at mid-span: hull radius at the fin (0.0476 m) + span / 2.
+# Rudders push along y, stern planes along z. Prestero's stern-plane angle has the opposite
+# sign (Z_uuds < 0), so positive deflection here = negative delta_s there.
+fins:
+  - {name: rudder_top,    position: [-0.638, 0.0, -0.0904], normal: [0, 1, 0], area: 0.00665, span: 0.0857, control: true}
+  - {name: rudder_bottom, position: [-0.638, 0.0,  0.0904], normal: [0, 1, 0], area: 0.00665, span: 0.0857, control: true}
+  - {name: plane_port,    position: [-0.638, -0.0904, 0.0], normal: [0, 0, 1], area: 0.00665, span: 0.0857, control: true}
+  - {name: plane_stbd,    position: [-0.638,  0.0904, 0.0], normal: [0, 0, 1], area: 0.00665, span: 0.0857, control: true}

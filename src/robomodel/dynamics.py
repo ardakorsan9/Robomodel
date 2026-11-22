@@ -11,7 +11,7 @@ The ocean current is zero.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -33,6 +33,8 @@ class Dynamics:
     r_g: np.ndarray  # (3,)
     r_b: np.ndarray  # (3,)
     b_thr: np.ndarray  # 6 x n thruster allocation
+    d_fin: np.ndarray = field(default_factory=lambda: np.zeros((6, 6)))  # x |u|
+    b_fin: np.ndarray = field(default_factory=lambda: np.zeros((6, 0)))  # x u|u| delta
 
     @property
     def mass_matrix(self) -> np.ndarray:
@@ -73,8 +75,15 @@ def euler_rate_matrix(phi: float, theta: float) -> np.ndarray:
 
 
 def damping_force(dyn: Dynamics, nu: np.ndarray) -> np.ndarray:
-    """D(nu) nu."""
-    return dyn.d_lin * nu + dyn.d_quad * np.abs(nu) * nu
+    """D(nu) nu, including the speed-dependent fin lift."""
+    return dyn.d_lin * nu + dyn.d_quad * np.abs(nu) * nu + abs(nu[0]) * (dyn.d_fin @ nu)
+
+
+def fin_control_force(dyn: Dynamics, nu: np.ndarray, deflection: np.ndarray) -> np.ndarray:
+    """tau from control-fin deflections (rad); fins only work while moving."""
+    if dyn.b_fin.shape[1] == 0:
+        return np.zeros(6)
+    return nu[0] * abs(nu[0]) * (dyn.b_fin @ np.asarray(deflection, dtype=float))
 
 
 def state_derivative(
@@ -108,10 +117,12 @@ def simulate(
     dt_out: float = 0.05,
     rtol: float = 1e-8,
     atol: float = 1e-10,
+    fin_deflection: np.ndarray | None = None,
 ) -> Trajectory:
     """Integrate the equations of motion.
 
     tau: constant generalised force (6,), or a function tau(t, state), or None for zero.
+    fin_deflection: constant deflection (rad) of each control fin.
     """
     state0 = np.zeros(12) if state0 is None else np.asarray(state0, dtype=float)
     if tau is None:
@@ -126,8 +137,13 @@ def simulate(
 
     m_inv = np.linalg.inv(dyn.mass_matrix)
 
+    deflection = None if fin_deflection is None else np.asarray(fin_deflection, dtype=float)
+
     def rhs(t, x):
-        return state_derivative(dyn, x, tau_fn(t, x), m_inv)
+        tau_t = tau_fn(t, x)
+        if deflection is not None:
+            tau_t = tau_t + fin_control_force(dyn, x[6:], deflection)
+        return state_derivative(dyn, x, tau_t, m_inv)
 
     t_eval = np.arange(0.0, t_end + dt_out / 2, dt_out)
     sol = solve_ivp(rhs, (0.0, t_end), state0, method="RK45", t_eval=t_eval, rtol=rtol, atol=atol)

@@ -21,7 +21,7 @@ from robomodel.dynamics import (
 )
 from robomodel.geometry import build_mesh
 from robomodel.model import build_model
-from robomodel.rigid_body import part_inertia
+from robomodel.rigid_body import part_inertia, point_inertia
 from robomodel.sections import slice_hull
 from robomodel.thrusters import allocation_matrix, thrust
 from robomodel.vehicle import Geometry, load_vehicle, parse_vehicle
@@ -385,3 +385,108 @@ def test_matlab_export_files_and_values(tmp_path):
     ref = np.loadtxt(tmp_path / "test_auv_reference.csv", delimiter=",", skiprows=1)
     assert ref.shape[1] == 13 and ref[-1, 7] > 0.2  # moving forward at the end
     assert matlab_name("my-AUV 2") == "my_AUV_2" and matlab_name("2x") == "v_2x"
+
+
+# --- Fins and measured values ------------------------------------------------
+
+
+def tail_fins(control=True):
+    """Cross-shaped tail: two vertical rudders (normal y) and two stern planes (normal z)."""
+    x = -0.7
+    common = {"area": 0.0066, "span": 0.08, "control": control}
+    return [
+        {"name": "rudder_top", "position": [x, 0, -0.14], "normal": [0, 1, 0], **common},
+        {"name": "rudder_bottom", "position": [x, 0, 0.14], "normal": [0, 1, 0], **common},
+        {"name": "plane_port", "position": [x, -0.14, 0], "normal": [0, 0, 1], **common},
+        {"name": "plane_stbd", "position": [x, 0.14, 0], "normal": [0, 0, 1], **common},
+    ]
+
+
+def finned_auv(fins):
+    data = {
+        "name": "finned",
+        "category": "underwater",
+        "mass": 45.0,
+        "water": "fresh",
+        "geometry": {"primitive": "cylinder", "length": 1.6, "radius": 0.095},
+        "parts": [{"mass": 6.0, "position": [0.0, 0.0, 0.04]}],
+        "fins": fins,
+    }
+    return build_model(parse_vehicle(data))
+
+
+def test_helmbold_lift_slope_limits():
+    from robomodel.fins import lift_slope
+
+    assert lift_slope(1e-6) == pytest.approx(np.pi / 2 * 1e-6, rel=1e-3)  # slender wing
+    assert lift_slope(1e6) == pytest.approx(2 * np.pi, rel=1e-3)  # thin aerofoil theory
+    assert 0 < lift_slope(2.0) < 2 * np.pi
+
+
+def test_fin_damping_is_symmetric_and_dissipative():
+    model = finned_auv(tail_fins())
+    d = model.fins.d_fin.value
+    np.testing.assert_allclose(d, d.T, atol=1e-12)
+    assert np.all(np.linalg.eigvalsh(d) > -1e-12)
+
+
+def test_tail_fins_damp_yaw_and_restore_heading():
+    model = finned_auv(tail_fins())
+    d = model.fins.d_fin.value
+    assert d[5, 5] > 0 and d[4, 4] > 0  # yaw and pitch damping
+    # Sideslip v > 0 at forward speed: tail lift turns the nose towards the velocity (+r).
+    nu = np.array([1.0, 0.1, 0, 0, 0, 0])
+    assert -(abs(nu[0]) * d @ nu)[5] > 0
+
+
+def test_fins_make_the_hull_directionally_stable():
+    """Bare hull: unstable in yaw (Munk moment). Big enough tail fins fix it."""
+    speed = 1.0
+
+    def slowest_pole(model):
+        dyn = model.dynamics()
+        state0 = np.zeros(12)
+        state0[6] = speed
+        tau0 = np.zeros(6)
+        tau0[0] = dyn.d_lin[0] * speed + dyn.d_quad[0] * speed**2
+        a, _ = linearize(dyn, state0, tau0)
+        poles = np.linalg.eigvals(a[6:, 6:])  # velocity dynamics only
+        return np.max(poles.real)
+
+    bare = finned_auv([])
+    big = [dict(f, area=0.03, span=0.15) for f in tail_fins(control=False)]
+    assert slowest_pole(bare) > 0
+    assert slowest_pole(finned_auv(big)) < 0
+
+
+def test_rudder_deflection_turns_the_vehicle():
+    model = finned_auv(tail_fins())
+    dyn = model.dynamics()
+    names = model.fins.control_names
+    deflection = np.array([0.1 if n.startswith("rudder") else 0.0 for n in names])
+    state0 = np.zeros(12)
+    state0[6] = 1.0
+    surge = dyn.d_lin[0] + dyn.d_quad[0]
+    traj = simulate(
+        dyn, 10.0, tau=np.array([surge, 0, 0, 0, 0, 0]), state0=state0, fin_deflection=deflection
+    )
+    # Rudders push the tail to +y, so the nose turns left: heading decreases.
+    assert traj.eta[-1, 5] < -0.05
+    no_turn = simulate(dyn, 10.0, tau=np.array([surge, 0, 0, 0, 0, 0]), state0=state0)
+    assert abs(no_turn.eta[-1, 5]) < 1e-9
+
+
+def test_measured_values_replace_cad_estimates():
+    v = make_vehicle(measured={"r_g": [0.01, 0, 0.02], "inertia_g": [0.1, 0.5, 0.5]})
+    props = build_model(v).mass
+    np.testing.assert_allclose(props.r_g.value, [0.01, 0, 0.02])
+    assert props.r_g.source.value == "measured"
+    np.testing.assert_allclose(np.diag(props.inertia_g.value), [0.1, 0.5, 0.5])
+    np.testing.assert_allclose(
+        props.inertia_o.value, props.inertia_g.value + point_inertia(10.0, [0.01, 0, 0.02])
+    )
+
+
+def test_bad_measured_inertia_rejected():
+    with pytest.raises(ValueError, match="inertia_g"):
+        make_vehicle(measured={"inertia_g": [0.1, -0.5, 0.5]})

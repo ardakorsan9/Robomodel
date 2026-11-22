@@ -32,6 +32,8 @@ def build_mesh(geometry: Geometry) -> trimesh.Trimesh:
         )
     if mesh.volume < 0:
         mesh.invert()  # inward-facing normals give a negative volume
+    if geometry.origin == "buoyancy":
+        mesh.apply_translation(-np.asarray(mesh.center_mass))
     return mesh
 
 
@@ -62,11 +64,10 @@ def _cylinder(length: float, radius: float) -> trimesh.Trimesh:
 
 
 def myring_radius(h, a, b, c, d, n, theta):
-    """Myring hull radius at distance h from the nose tip (Prestero 2001, eqs. 2.1-2.2).
+    """Myring hull radius at distance h from the tip of the full (untruncated) nose.
 
-    a: nose length, b: parallel mid-body length, c: tail length, d: max diameter,
-    n: nose shape exponent, theta: tail half-angle at the tip (rad).
-    The REMUS hull truncates nose and tail with offsets; that is not modelled here.
+    Prestero 2001, eqs. 2.1-2.2 and Table 2.1: a nose length, b parallel mid-body length,
+    c tail length, d max diameter, n nose exponent, theta tail angle parameter (rad).
     """
     h = np.asarray(h, dtype=float)
     r = np.full_like(h, d / 2)
@@ -79,14 +80,26 @@ def myring_radius(h, a, b, c, d, n, theta):
     return np.clip(r, 0, None)
 
 
-def _myring(a, b, c, d, n, theta) -> trimesh.Trimesh:
-    length = a + b + c
+def _myring(a, b, c, d, n, theta, a_offset=0.0, c_offset=0.0) -> trimesh.Trimesh:
+    """Myring hull. a_offset / c_offset cut that much off the nose / tail tip (flat ends),
+    as on the real REMUS (Prestero Table 2.1)."""
+    start, end = a_offset, a + b + c - c_offset
+    length = end - start
     # Even spacing: denser spacing near the tips makes trimesh merge vertices there and
     # leaves holes in the mesh.
-    h = np.linspace(0.0, length, PROFILE_POINTS)
+    h = np.linspace(start, end, PROFILE_POINTS)
     r = myring_radius(h, a, b, c, d, n, theta)
-    r[0] = r[-1] = 0.0  # close both ends exactly on the axis
-    profile = np.column_stack([r, length / 2 - h])  # (radius, height); nose at +length/2
+    height = length / 2 - (h - start)  # nose at +length/2
+    # Close both ends on the axis; a truncated end becomes a flat face.
+    profile = np.column_stack([r, height])
+    if r[0] > 0:
+        profile = np.vstack([[0.0, height[0]], profile])
+    else:
+        profile[0, 0] = 0.0
+    if r[-1] > 0:
+        profile = np.vstack([profile, [0.0, height[-1]]])
+    else:
+        profile[-1, 0] = 0.0
     mesh = trimesh.creation.revolve(profile, sections=REVOLVE_SECTIONS)
     return _z_axis_to_x(mesh)
 

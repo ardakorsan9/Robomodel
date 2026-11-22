@@ -273,7 +273,7 @@ def test_flat_ellipsoid_has_large_heave_added_mass():
 # --- Whole model -------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["sphere", "ellipsoid", "remus_hull", "test_auv"])
+@pytest.mark.parametrize("name", ["sphere", "ellipsoid", "remus100", "test_auv"])
 def test_examples_build_and_serialise(name):
     import yaml
 
