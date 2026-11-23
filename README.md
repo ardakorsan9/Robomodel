@@ -163,6 +163,13 @@ simulation), self-righting, neutral buoyancy, stability at rest and at cruise sp
 - Gazebo: control-fin deflections and the water current are not exported yet.
 - Only underwater vehicles so far.
 
+## Tests
+
+```bash
+uv run pytest            # about 190 tests, ~3 min, ~1.2 GB RAM
+uv run pytest -m heavy   # also the BlueROV2 test (needs its 309 MB CAD, ~4 GB RAM)
+```
+
 ## Project layout
 
 | Path | What |

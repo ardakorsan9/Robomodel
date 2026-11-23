@@ -43,6 +43,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Heavy tests (big CAD files, several GB of RAM) run only with: pytest -m heavy
+markers = ["heavy: needs big downloaded CAD files and several GB of memory"]
+addopts = "-m 'not heavy'"
 
 [tool.ruff]
 line-length = 100

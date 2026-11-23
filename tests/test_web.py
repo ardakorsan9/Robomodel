@@ -67,6 +67,8 @@ def test_build_and_download(upload_id):
     body = r.json()
     assert abs(body["summary"]["mass"] - 45.0) < 1e-9
     assert any(c["status"] == "ok" for c in body["checks"])
+    speed = body["behaviour"]["top_speed"]  # plain summary with the low / high range
+    assert speed["high"] <= speed["nominal"] <= speed["low"]
     z = client.get(f"/api/download/{upload_id}/{body['result']}")
     names = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
     for part in (

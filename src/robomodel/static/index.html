@@ -1,60 +1,85 @@
 <!doctype html>
-<html lang="en">
+<html lang="tr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>robomodel – CAD to mathematical model</title>
+<title>robomodel – CAD → matematiksel model</title>
 <style>
   :root { --bg:#f6f7f9; --panel:#fff; --ink:#1c2430; --muted:#5f6b7a; --line:#dde2e8;
-          --accent:#1f6feb; --ok:#1a7f37; --warn:#9a6700; --fail:#cf222e; }
+          --accent:#1f6feb; --ok:#1a7f37; --warn:#9a6700; --fail:#cf222e; --soft:#f3f6fa; }
   * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  body { margin:0; font:14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
          color:var(--ink); background:var(--bg); display:grid;
-         grid-template-columns: 420px 1fr; height:100vh; }
-  aside { background:var(--panel); border-right:1px solid var(--line); overflow:auto; padding:16px 18px; }
-  main { position:relative; display:grid; grid-template-rows: 1fr auto; min-width:0; }
-  h1 { font-size:18px; margin:0 0 2px; } .sub { color:var(--muted); margin:0 0 14px; }
-  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted);
-       margin:18px 0 8px; border-top:1px solid var(--line); padding-top:12px; }
-  label { display:block; margin:6px 0 2px; color:var(--muted); font-size:12px; }
-  input, select { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px;
+         grid-template-columns: 440px 1fr; height:100vh; }
+  aside { background:var(--panel); border-right:1px solid var(--line); overflow:auto; padding:16px 20px 28px; }
+  main { position:relative; min-width:0; }
+  header.top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  h1 { font-size:19px; margin:0; } .sub { color:var(--muted); margin:2px 0 12px; }
+  .lang button { padding:3px 9px; font-size:12px; }
+  .intro { background:var(--soft); border-radius:10px; padding:10px 12px; margin:6px 0 4px; font-size:13px; }
+  .intro ol { margin:4px 0 0 18px; padding:0; }
+  .step { border-top:1px solid var(--line); margin-top:16px; padding-top:12px; }
+  .step h2 { font-size:15px; margin:0 0 2px; display:flex; gap:8px; align-items:center; }
+  .num { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%;
+         background:var(--accent); color:#fff; font-size:12px; font-weight:700; }
+  .why { color:var(--muted); font-size:12.5px; margin:0 0 8px; }
+  label { display:block; margin:8px 0 2px; font-size:12.5px; font-weight:600; }
+  label small { font-weight:400; color:var(--muted); }
+  input, select { width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:7px;
                   font:inherit; background:#fff; }
+  input:focus, select:focus { outline:2px solid #b6d1ff; border-color:var(--accent); }
   .row { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
   .row3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; }
-  button { padding:7px 12px; border:1px solid var(--line); border-radius:6px; background:#fff;
+  button { padding:7px 12px; border:1px solid var(--line); border-radius:7px; background:#fff;
            font:inherit; cursor:pointer; }
+  button:hover:not(:disabled) { border-color:#aab4c0; }
   button.primary { background:var(--accent); color:#fff; border-color:var(--accent); width:100%;
-                   padding:10px; font-weight:600; margin-top:14px; }
+                   padding:11px; font-weight:650; margin-top:16px; font-size:15px; }
   button.active { background:#eaf2ff; border-color:var(--accent); }
-  button:disabled { opacity:.5; cursor:default; }
+  button:disabled { opacity:.45; cursor:default; }
   .tools { display:flex; gap:6px; flex-wrap:wrap; }
-  .hint { color:var(--muted); font-size:12px; margin:6px 0; }
-  .item { border:1px solid var(--line); border-radius:8px; padding:8px; margin:6px 0; }
+  .hint { color:var(--muted); font-size:12.5px; margin:6px 0; }
+  .size { background:#eef7ee; border-radius:7px; padding:6px 9px; font-size:12.5px; margin-top:8px; display:none; }
+  .size.bad { background:#fff1f0; }
+  details.adv { margin-top:8px; } details.adv summary { cursor:pointer; color:var(--muted); font-size:12.5px; }
+  .item { border:1px solid var(--line); border-radius:9px; padding:8px 10px; margin:6px 0; }
   .item header { display:flex; justify-content:space-between; align-items:center; font-weight:600; }
-  .item header button { padding:2px 8px; }
+  .item header button { padding:2px 8px; font-size:12px; }
   #view { width:100%; height:100%; display:block; background:#eef1f5; }
-  #legend { position:absolute; top:10px; right:12px; background:rgba(255,255,255,.9);
-            border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:12px; }
+  #legend { position:absolute; top:10px; left:12px; background:rgba(255,255,255,.92);
+            border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:12.5px; }
   #legend b.x { color:#d22; } #legend b.y { color:#1a8f2a; } #legend b.z { color:#2550d8; }
-  #result { position:absolute; top:0; right:0; bottom:0; width:min(820px, 72%); overflow:auto;
-            background:var(--panel); border-left:1px solid var(--line); padding:18px 22px;
+  #empty { position:absolute; inset:0; display:grid; place-items:center; color:var(--muted);
+           font-size:15px; pointer-events:none; text-align:center; padding:20px; }
+  #result { position:absolute; top:0; right:0; bottom:0; width:min(860px, 74%); overflow:auto;
+            background:var(--panel); border-left:1px solid var(--line); padding:20px 24px 40px;
             box-shadow:-8px 0 24px rgba(0,0,0,.08); display:none; z-index:5; }
-  #result h3 { margin:0 0 4px; font-size:18px; }
+  #result h3 { margin:0 0 6px; font-size:20px; }
+  #result h4 { margin:20px 0 6px; font-size:14px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
   #result .close { position:sticky; top:0; float:right; font-size:18px; padding:2px 10px; }
-  #result table { border-collapse:collapse; width:100%; margin:6px 0 4px; font-size:13px; }
-  #result th, #result td { border-bottom:1px solid var(--line); padding:5px 6px; text-align:right;
-                           font-variant-numeric: tabular-nums; }
-  #result th:first-child, #result td:first-child { text-align:left; }
-  #result th { color:var(--muted); font-weight:600; background:#f8f9fb; }
-  .src { color:var(--muted); font-size:11px; }
-  .eq { background:#f3f5f8; border-radius:6px; padding:6px 10px; font-family:ui-monospace, monospace; }
+  .cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap:10px; margin-top:8px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:#fff; }
+  .card .k { color:var(--muted); font-size:12px; } .card .v { font-size:17px; font-weight:650; margin-top:2px; }
+  .card .r { color:var(--muted); font-size:12px; margin-top:2px; }
+  .card.ok { border-left:4px solid var(--ok); } .card.warn { border-left:4px solid #d4a72c; } .card.fail { border-left:4px solid var(--fail); }
+  .todo { background:#fffbe8; border:1px solid #f0e2a8; border-radius:10px; padding:8px 12px 8px 30px; }
+  .todo li { margin:3px 0; }
+  .trust { background:var(--soft); border-radius:10px; padding:8px 12px; font-size:13px; }
+  table { border-collapse:collapse; width:100%; margin:6px 0 4px; font-size:13px; }
+  th, td { border-bottom:1px solid var(--line); padding:5px 6px; text-align:right; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--muted); font-weight:600; background:#f8f9fb; }
+  .src { color:var(--muted); font-size:11.5px; }
+  .eq { background:#f3f5f8; border-radius:6px; padding:6px 10px; font-family:ui-monospace, monospace; font-size:12.5px; }
   .badge { display:inline-block; min-width:44px; text-align:center; border-radius:10px; padding:0 6px;
-           font-size:11px; font-weight:600; margin-right:6px; }
-  .badge.ok { background:#dafbe1; } .badge.warn { background:#fff8c5; } .badge.fail { background:#ffebe9; }
-  .check { margin:2px 0; } .ok { color:var(--ok); } .warn { color:var(--warn); } .fail { color:var(--fail); }
+           font-size:11px; font-weight:650; margin-right:6px; }
+  .badge.ok { background:#dafbe1; color:var(--ok); } .badge.warn { background:#fff8c5; color:var(--warn); }
+  .badge.fail { background:#ffebe9; color:var(--fail); }
+  .check { margin:3px 0; }
   pre { background:#f3f5f8; padding:10px; border-radius:6px; overflow:auto; font-size:12px; }
-  #status { margin-top:8px; font-size:12px; color:var(--muted); min-height:1.4em; }
+  #status { margin-top:10px; font-size:12.5px; color:var(--muted); min-height:1.4em; }
   .err { color:var(--fail); white-space:pre-wrap; }
+  a.dl button { width:auto; margin:4px 0 0; }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -63,61 +88,80 @@
 </head>
 <body>
 <aside>
-  <h1>robomodel</h1>
-  <p class="sub">CAD → 6-DOF mathematical model (Fossen) for MATLAB, Simulink and Gazebo.</p>
+  <header class="top">
+    <h1>robomodel</h1>
+    <span class="lang"><button data-lang="tr">TR</button> <button data-lang="en">EN</button></span>
+  </header>
+  <p class="sub" data-i18n="tagline"></p>
+  <div class="intro"><b data-i18n="howTitle"></b>
+    <ol><li data-i18n="how1"></li><li data-i18n="how2"></li><li data-i18n="how3"></li></ol>
+  </div>
+  <button id="example" style="width:100%;margin-top:8px" data-i18n="example"></button>
 
-  <button id="example" style="width:100%">Try an example (REMUS 100 hull)</button>
-  <h2>1. CAD file</h2>
-  <input type="file" id="cad" accept=".stl,.step,.stp,.obj,.ply">
-  <div class="hint">STL or STEP. A multi-part assembly (open-frame ROV) is fine: tick "assembly".</div>
-  <div class="hint" id="sizeinfo"></div>
-  <div class="row">
-    <div><label>File units</label>
-      <select id="unit"><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option></select></div>
-    <div><label>Hydrodynamics</label>
-      <select id="hydro"><option value="auto">auto</option><option value="slender">slender (torpedo)</option><option value="frame">frame (box-like ROV)</option></select></div>
-  </div>
-  <div class="row">
-    <div><label>Forward is file axis</label><select id="fwd"></select></div>
-    <div><label>Up is file axis</label><select id="up"></select></div>
-  </div>
-  <div class="row">
-    <div><label><input type="checkbox" id="assembly" style="width:auto"> assembly (many parts)</label></div>
-    <div><label>Voxel size (mm)</label><input id="voxel" type="number" value="4" min="0.5" step="0.5"></div>
-  </div>
+  <section class="step">
+    <h2><span class="num">1</span><span data-i18n="s1"></span></h2>
+    <p class="why" data-i18n="s1why"></p>
+    <input type="file" id="cad" accept=".stl,.step,.stp,.obj,.ply">
+    <div class="size" id="sizeinfo"></div>
+    <div class="row">
+      <div><label><span data-i18n="units"></span></label>
+        <select id="unit"><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option></select></div>
+      <div><label><span data-i18n="water"></span></label>
+        <select id="water"><option value="fresh" data-i18n="fresh"></option><option value="sea" data-i18n="sea"></option></select></div>
+    </div>
+    <p class="hint" data-i18n="axesWhy"></p>
+    <div class="row">
+      <div><label data-i18n="fwd"></label><select id="fwd"></select></div>
+      <div><label data-i18n="up"></label><select id="up"></select></div>
+    </div>
+    <details class="adv"><summary data-i18n="advanced"></summary>
+      <label><input type="checkbox" id="assembly" style="width:auto"> <span data-i18n="assembly"></span></label>
+      <div class="row">
+        <div><label data-i18n="voxel"></label><input id="voxel" type="number" value="4" min="0.5" step="0.5"></div>
+        <div><label data-i18n="hydro"></label>
+          <select id="hydro"><option value="auto">auto</option><option value="slender" data-i18n="slender"></option><option value="frame" data-i18n="frameOpt"></option></select></div>
+      </div>
+    </details>
+  </section>
 
-  <h2>2. Vehicle</h2>
-  <div class="row">
-    <div><label>Name</label><input id="name" value="my_vehicle"></div>
-    <div><label>Mass (kg)</label><input id="mass" type="number" step="0.01" placeholder="weighed mass"></div>
-  </div>
-  <div class="row">
-    <div><label>Water</label><select id="water"><option value="fresh">fresh (1000)</option><option value="sea">sea (1025)</option></select></div>
-    <div><label>Cruise speed (m/s)</label><input id="speed" type="number" value="1.0" step="0.1"></div>
-  </div>
-  <label>Measured volume (m³, optional: weigh in water)</label><input id="mvol" type="number" step="0.0001">
-  <label>Measured centre of gravity x, y, z (m, optional, body frame)</label>
-  <div class="row3"><input id="cgx" type="number" step="0.001"><input id="cgy" type="number" step="0.001"><input id="cgz" type="number" step="0.001"></div>
+  <section class="step">
+    <h2><span class="num">2</span><span data-i18n="s2"></span></h2>
+    <p class="why" data-i18n="s2why"></p>
+    <div class="row">
+      <div><label data-i18n="name"></label><input id="name" value="my_vehicle"></div>
+      <div><label><span data-i18n="mass"></span> <small>kg</small></label><input id="mass" type="number" step="0.01"></div>
+    </div>
+    <label><span data-i18n="speed"></span> <small>m/s</small></label><input id="speed" type="number" value="1.0" step="0.1">
+    <details class="adv"><summary data-i18n="measuredTitle"></summary>
+      <label><span data-i18n="mvol"></span> <small>m³</small></label><input id="mvol" type="number" step="0.0001">
+      <label><span data-i18n="cg"></span> <small>m</small></label>
+      <div class="row3"><input id="cgx" type="number" step="0.001" placeholder="x"><input id="cgy" type="number" step="0.001" placeholder="y"><input id="cgz" type="number" step="0.001" placeholder="z"></div>
+    </details>
+  </section>
 
-  <h2>3. Thrusters, fins, heavy parts</h2>
-  <div class="tools">
-    <button data-mode="thruster">+ thruster</button>
-    <button data-mode="fin">+ fin</button>
-    <button data-mode="part">+ heavy part</button>
-  </div>
-  <div class="hint" id="modehint">Pick a tool, then click on the model to place it.</div>
-  <div id="items"></div>
+  <section class="step">
+    <h2><span class="num">3</span><span data-i18n="s3"></span></h2>
+    <p class="why" data-i18n="s3why"></p>
+    <div class="tools">
+      <button data-mode="thruster" data-i18n="addThruster"></button>
+      <button data-mode="fin" data-i18n="addFin"></button>
+      <button data-mode="part" data-i18n="addPart"></button>
+    </div>
+    <div class="hint" id="modehint"></div>
+    <div id="items"></div>
+  </section>
 
-  <button class="primary" id="build" disabled>Build model</button>
-  <button id="showresult" style="width:100%;margin-top:6px;display:none">Show results</button>
+  <button class="primary" id="build" disabled data-i18n="build"></button>
+  <button id="showresult" style="width:100%;margin-top:6px;display:none" data-i18n="showResults"></button>
   <div id="status"></div>
-  <p class="hint" style="margin-top:18px">Privacy: your CAD is processed on this server only and
-    deleted automatically after 2 hours. <a href="#" id="deletefiles" style="display:none">Delete my files now</a></p>
+  <p class="hint" style="margin-top:18px"><span data-i18n="privacy"></span>
+    <a href="#" id="deletefiles" style="display:none" data-i18n="deleteNow"></a></p>
 </aside>
 
 <main>
   <canvas id="view"></canvas>
-  <div id="legend">body axes: <b class="x">x forward</b> · <b class="y">y right</b> · <b class="z">z down</b></div>
+  <div id="empty" data-i18n="emptyView"></div>
+  <div id="legend"><span data-i18n="axes"></span>: <b class="x" data-i18n="axX"></b> · <b class="y" data-i18n="axY"></b> · <b class="z" data-i18n="axZ"></b></div>
   <section id="result"></section>
 </main>
 
@@ -125,6 +169,161 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
+
+// ---------- language ----------
+const T = {
+  tr: {
+    tagline: "CAD çiziminden aracın matematiksel modeli: MATLAB, Simulink ve Gazebo için hazır.",
+    howTitle: "Nasıl çalışır?", how1: "CAD dosyanı yükle, ön ve üst yönü kontrol et.",
+    how2: "Kütleyi gir; iticileri ve kanatları model üzerine tıklayarak yerleştir.",
+    how3: "Modeli oluştur: özet, kontroller ve indirilecek dosyalar hazır.",
+    example: "Örnekle dene (REMUS 100 gövdesi)",
+    s1: "CAD dosyası", s1why: "STL ya da STEP. Tek parça kapalı gövde en iyisi; çok parçalı (açık kasalı ROV) da olur.",
+    units: "Dosya birimi", water: "Su", fresh: "Tatlı su (1000)", sea: "Deniz suyu (1025)",
+    axesWhy: "3B görüntüde kırmızı ok aracın ÖNÜNÜ, mavi ok AŞAĞIYI göstermeli. Göstermiyorsa aşağıdan düzelt.",
+    fwd: "Ön, dosyanın hangi ekseni?", up: "Üst, dosyanın hangi ekseni?",
+    advanced: "Gelişmiş ayarlar", assembly: "Çok parçalı montaj (açık kasalı ROV)", voxel: "Voksel boyu (mm)",
+    hydro: "Hidrodinamik yöntem", slender: "uzun gövde (torpido)", frameOpt: "kutu biçimli (ROV)",
+    s2: "Araç bilgileri", s2why: "Kütle şart (tartıdaki değer). Gerisi isteğe bağlı ama doğruluğu artırır.",
+    name: "Ad", mass: "Kütle", speed: "Seyir hızı (doğrusal model için)",
+    measuredTitle: "Ölçtüğüm değerler var (isteğe bağlı)", mvol: "Hacim (suda tartarak)",
+    cg: "Ağırlık merkezi x, y, z (gövde ekseni)",
+    s3: "İticiler, kanatlar, ağır parçalar", s3why: "Bir araç seç, sonra 3B modelin üzerinde yerine tıkla. Konumlar metre, gövde ekseninde (x ileri, y sağ, z aşağı).",
+    addThruster: "+ itici", addFin: "+ kanat / dümen", addPart: "+ ağır parça (batarya)",
+    pick: "Bir araç seç, sonra modelin üzerine tıkla.", clickTo: "Modelin üzerinde {what} yerine tıkla.",
+    thruster: "iticinin", fin: "kanadın", part: "parçanın",
+    build: "Modeli oluştur", showResults: "Sonuçları göster",
+    privacy: "Gizlilik: CAD dosyan sadece bu sunucuda işlenir ve 2 saat sonra otomatik silinir.",
+    deleteNow: "Dosyalarımı şimdi sil", emptyView: "CAD dosyanı yükle ya da örnekle dene.",
+    axes: "gövde eksenleri", axX: "x ileri", axY: "y sağ", axZ: "z aşağı",
+    sizeOk: "Boyut: boy {L} m × en {W} m × yükseklik {H} m", sizeBad: " — birimi kontrol et!",
+    uploading: "Yükleniyor: {f} ({mb} MB)...", preview: "3B önizleme hazırlanıyor...",
+    loaded: "{f}: {n} üçgen{c}. Boyutu ve okların yönünü kontrol et.", closed: ", kapalı katı",
+    open: ", kapalı değil: montaj olarak işlenecek", needMass: "Önce kütleyi gir.",
+    building: "Model hesaplanıyor (büyük montajlar bir dakika sürebilir)...",
+    done: "Hazır: sonuçlar sağda. MATLAB, Simulink ve Gazebo dosyalarını indirebilirsin.",
+    deleted: "Dosyaların sunucudan silindi.", exampleLoading: "Örnek yükleniyor...",
+    remove: "kaldır", pushes: "itme yönü", modelLbl: "model (T200 hazır)", fwdN: "ileri azami itki (N)",
+    revN: "geri azami itki (N)", liftDir: "kaldırma yönü", area: "alan (cm²)", span: "boy (cm)",
+    movable: "hareketli (dümen / derinlik dümeni)", partMass: "kütle (kg)", nameLbl: "ad",
+    // results
+    resTitle: "Model: {name}", download: "⬇ Modeli indir (MATLAB alt/orta/üst, Simulink, Gazebo, rapor)",
+    summary: "Özet", todo: "Şimdi ne yapmalı?", trustTitle: "Neye ne kadar güvenebilirim?",
+    trustText: "Kütle, hacim, merkezler ve geometri CAD'den güvenilir çıkar. Hız ve dönüş gibi davranışlar su direncine bağlıdır; bu CAD'den kesin çıkmaz, bu yüzden aralık olarak veriyoruz. Kontrolcünü indirilen alt/orta/üst modellerin üçünde de dene.",
+    behaviour: "Davranış tahmini", rangeLbl: "aralık {a} – {b}", checks: "Otomatik kontroller",
+    warnings: "Uyarılar (İngilizce ayrıntı)", details: "Ayrıntılı değerler", matrices: "Matrisler",
+    fullReport: "Tam metin raporu",
+    buoyNeutral: "Nötr: ne batar ne yüzer", buoyUp: "Yavaşça yüzer (+{n} N, ağırlığın %{p}'i)",
+    buoyDown: "Batar ({n} N, ağırlığın %{p}'i)", buoyancyK: "Kaldırma dengesi",
+    rightK: "Devrilince düzelme", rightOk: "Kendi kendine düzelir (BG = {cm} cm)",
+    rightNo: "Düzelmez: ağır parçaları aşağı al", stabK: "Yön kararlılığı",
+    stabOk: "Kontrolsüz düz gider", stabNo: "Aktif yön kontrolü gerekir (kanatsız gövdelerde normal)",
+    speedK: "Son hız (tam ileri itki)", turnK: "Dönüş hızı", vertK: "Dikey hız (%50 itici)",
+    rollK: "Yuvarlanma salınım periyodu", pitchK: "Yunuslama salınım periyodu",
+    validK: "Model geçerliliği", validOk: "Tüm matematik kontrolleri geçti", validNo: "Geçersiz: girdide hata var",
+    tFail: "Model geçersiz: kırmızı kontrolleri ve uyarıları oku, girdiyi düzelt.",
+    tUnits: "Birimi kontrol et (mm / m): boyut ya da yoğunluk mantıksız.",
+    tBuoy: "Araç nötr değil: kütleyi tart ya da ağırlık/köpük ekleyerek dengele.",
+    tRight: "Ağırlık merkezi kaldırma merkezinin altında değil: bataryayı / ağır parçaları aşağı al.",
+    tThr: "İtici yok: 3. adımda itici ekle, yoksa modelin kontrol girişi olmaz.",
+    tPreset: "İtici sınırları hazır değerden: el kantarıyla ölç ya da kendi değerini gir.",
+    tTilt: "CAD eğik çizilmiş görünüyor: ön/üst seçimini kontrol et.",
+    tRepair: "CAD onarıldı ya da voksellerle işlendi: hacmi suda tartarak doğrula.",
+    tCal: "Daha doğru hız ve dönüş için: havuzda kısa test + kalibrasyon (komut satırı: robomodel testplan / calibrate).",
+    tSep: "Ayrık gövdeler ayrı ayrı hesaplandı; aralarındaki etkileşim yok sayıldı.",
+    perAxis: "Eksen eksen", inertiaRow: "eylemsizlik (kg m²)", addedRow: "eklenmiş kütle",
+    linRow: "doğrusal sönüm", quadRow: "karesel sönüm", sourceCol: "kaynak",
+    massVol: "Kütle ve kaldırma", massRow: "kütle", volRow: "hacim", wbRow: "ağırlık / kaldırma",
+    cgRow: "ağırlık merkezi", cbRow: "kaldırma merkezi",
+  },
+  en: {
+    tagline: "From a CAD drawing to the vehicle's mathematical model, ready for MATLAB, Simulink and Gazebo.",
+    howTitle: "How it works", how1: "Upload your CAD and check which way is forward and up.",
+    how2: "Enter the mass; click thrusters and fins onto the model.",
+    how3: "Build: summary, checks and files to download.",
+    example: "Try an example (REMUS 100 hull)",
+    s1: "CAD file", s1why: "STL or STEP. A single closed hull is best; a multi-part open-frame ROV works too.",
+    units: "File units", water: "Water", fresh: "Fresh (1000)", sea: "Sea (1025)",
+    axesWhy: "In the 3D view the red arrow must point FORWARD and the blue one DOWN. If not, fix it below.",
+    fwd: "Forward is which file axis?", up: "Up is which file axis?",
+    advanced: "Advanced settings", assembly: "Multi-part assembly (open-frame ROV)", voxel: "Voxel size (mm)",
+    hydro: "Hydrodynamics method", slender: "slender (torpedo)", frameOpt: "box-like (ROV)",
+    s2: "Vehicle data", s2why: "Mass is required (weighed). The rest is optional but improves accuracy.",
+    name: "Name", mass: "Mass", speed: "Cruise speed (for the linear model)",
+    measuredTitle: "I have measured values (optional)", mvol: "Volume (weighing in water)",
+    cg: "Centre of gravity x, y, z (body frame)",
+    s3: "Thrusters, fins, heavy parts", s3why: "Pick a tool, then click on the 3D model where it sits. Positions in metres, body frame (x forward, y right, z down).",
+    addThruster: "+ thruster", addFin: "+ fin / rudder", addPart: "+ heavy part (battery)",
+    pick: "Pick a tool, then click on the model.", clickTo: "Click on the model where the {what} sits.",
+    thruster: "thruster", fin: "fin", part: "part",
+    build: "Build model", showResults: "Show results",
+    privacy: "Privacy: your CAD is processed only on this server and deleted after 2 hours.",
+    deleteNow: "Delete my files now", emptyView: "Upload your CAD or try the example.",
+    axes: "body axes", axX: "x forward", axY: "y right", axZ: "z down",
+    sizeOk: "Size: length {L} m × width {W} m × height {H} m", sizeBad: " — check the units!",
+    uploading: "Uploading {f} ({mb} MB)...", preview: "Preparing the 3D preview...",
+    loaded: "{f}: {n} triangles{c}. Check the size and the arrows.", closed: ", closed solid",
+    open: ", not closed: handled as an assembly", needMass: "Enter the mass first.",
+    building: "Building the model (big assemblies can take a minute)...",
+    done: "Done: results on the right. Download the MATLAB, Simulink and Gazebo files.",
+    deleted: "Your files were deleted from the server.", exampleLoading: "Loading the example...",
+    remove: "remove", pushes: "pushes towards", modelLbl: "model (T200 preset)", fwdN: "max forward thrust (N)",
+    revN: "max reverse thrust (N)", liftDir: "lift direction", area: "area (cm²)", span: "span (cm)",
+    movable: "movable (rudder / stern plane)", partMass: "mass (kg)", nameLbl: "name",
+    resTitle: "Model: {name}", download: "⬇ Download model (MATLAB low/nominal/high, Simulink, Gazebo, report)",
+    summary: "Summary", todo: "What to do next", trustTitle: "How far can I trust it?",
+    trustText: "Mass, volume, centres and geometry come reliably from the CAD. Speeds and turning depend on water damping, which no CAD can give exactly, so they are shown as a range. Test your controller on all three downloaded models (low / nominal / high).",
+    behaviour: "Expected behaviour", rangeLbl: "range {a} – {b}", checks: "Automatic checks",
+    warnings: "Warnings (details)", details: "Detailed values", matrices: "Matrices",
+    fullReport: "Full text report",
+    buoyNeutral: "Neutral: neither sinks nor floats", buoyUp: "Floats up slowly (+{n} N, {p}% of weight)",
+    buoyDown: "Sinks ({n} N, {p}% of weight)", buoyancyK: "Buoyancy balance",
+    rightK: "Self-righting", rightOk: "Returns upright by itself (BG = {cm} cm)",
+    rightNo: "Does not: move heavy parts lower", stabK: "Course stability",
+    stabOk: "Runs straight without control", stabNo: "Needs active heading control (normal without fins)",
+    speedK: "Top speed (full forward thrust)", turnK: "Turn rate", vertK: "Vertical speed (50 % thrust)",
+    rollK: "Roll oscillation period", pitchK: "Pitch oscillation period",
+    validK: "Model validity", validOk: "All mathematical checks passed", validNo: "Invalid: the input has an error",
+    tFail: "The model is invalid: read the red checks and warnings and fix the input.",
+    tUnits: "Check the units (mm / m): the size or density is not plausible.",
+    tBuoy: "Not neutrally buoyant: weigh the vehicle, or balance it with weight or foam.",
+    tRight: "The centre of gravity is not below the centre of buoyancy: move batteries / heavy parts lower.",
+    tThr: "No thrusters: add them in step 3, otherwise the model has no control inputs.",
+    tPreset: "Thrust limits come from a preset: measure them with a luggage scale or enter your own.",
+    tTilt: "The CAD looks drawn at an angle: check forward / up.",
+    tRepair: "The CAD was repaired or voxelised: check the volume by weighing in water.",
+    tCal: "For accurate speeds and turning: a short pool test + calibration (command line: robomodel testplan / calibrate).",
+    tSep: "Separate hulls were computed one by one; their interaction is ignored.",
+    perAxis: "Per axis", inertiaRow: "inertia (kg m²)", addedRow: "added mass",
+    linRow: "linear damping", quadRow: "quadratic damping", sourceCol: "source",
+    massVol: "Mass and buoyancy", massRow: "mass", volRow: "volume", wbRow: "weight / buoyancy",
+    cgRow: "centre of gravity", cbRow: "centre of buoyancy",
+  },
+};
+const CHECK_TR = {
+  "rigid-body mass matrix": "Katı gövde kütle matrisi simetrik ve pozitif tanımlı",
+  "added mass M_A": "Eklenmiş kütle matrisi simetrik ve pozitif yarı tanımlı",
+  "total mass matrix": "Toplam kütle matrisi tersinir",
+  "Coriolis does no work": "Coriolis iş yapmıyor",
+  "damping only removes energy": "Sönüm sadece enerji harcıyor",
+  "free motion loses energy": "Serbest harekette enerji azalıyor (simülasyon)",
+  "self-righting": "Devrilince düzelme (ağırlık merkezi kaldırma merkezinin altında)",
+  "near neutral buoyancy": "Nötr kaldırmaya yakın (%5 içinde)",
+  "velocities decay at rest": "Durgun halde hızlar sönüyor",
+  "directionally stable": "Seyir hızında kontrolsüz yön kararlılığı",
+  "thrusters can push": "İticilerin etki ettiği yönler",
+};
+let lang = localStorage.getItem("robomodel-lang") || ((navigator.language || "").startsWith("tr") ? "tr" : "en");
+const t = (k, vars = {}) => (T[lang][k] ?? T.en[k] ?? k).replace(/\{(\w+)\}/g, (_, v) => vars[v] ?? "");
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-lang]").forEach((b) => b.classList.toggle("active", b.dataset.lang === lang));
+  setModeHint(); renderItems(); showSize(); if (lastResult) showResult(lastResult, false);
+}
+document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("click", () => {
+  lang = b.dataset.lang; localStorage.setItem("robomodel-lang", lang); applyLang();
+}));
 
 const $ = (id) => document.getElementById(id);
 const AXES = ["+x", "-x", "+y", "-y", "+z", "-z"];
@@ -143,8 +342,8 @@ camera.position.set(-1.5, 1.5, -1.0);
 const controls = new OrbitControls(camera, canvas);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 1.1));
 const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(-2, 3, -4); scene.add(sun);
-const root = new THREE.Group(); scene.add(root);   // CAD, transformed into the body frame
-const marks = new THREE.Group(); scene.add(marks); // thrusters, fins, parts
+const root = new THREE.Group(); scene.add(root);
+const marks = new THREE.Group(); scene.add(marks);
 let axesHelper = null, cadMesh = null, size = 1;
 
 function resize() {
@@ -155,9 +354,7 @@ function resize() {
 new ResizeObserver(resize).observe(canvas);
 (function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
 
-function axisVec(name) {
-  const v = new THREE.Vector3(); v[name[1]] = name[0] === "-" ? -1 : 1; return v;
-}
+function axisVec(name) { const v = new THREE.Vector3(); v[name[1]] = name[0] === "-" ? -1 : 1; return v; }
 function bodyAxes() {
   const x = axisVec($("fwd").value), up = axisVec($("up").value);
   if (Math.abs(x.dot(up)) > 0.5) return null;
@@ -167,48 +364,47 @@ function bodyAxes() {
 }
 function applyTransform() {
   const ax = bodyAxes();
-  if (!ax) { status("Forward and up must be different axes.", true); return; }
+  if (!ax) { status(lang === "tr" ? "Ön ve üst farklı eksenler olmalı." : "Forward and up must be different axes.", true); return; }
   const s = UNIT[$("unit").value];
   const m = new THREE.Matrix4().set(
     ax.x.x * s, ax.x.y * s, ax.x.z * s, 0,
     ax.y.x * s, ax.y.y * s, ax.y.z * s, 0,
     ax.z.x * s, ax.z.y * s, ax.z.z * s, 0, 0, 0, 0, 1);
   root.matrixAutoUpdate = false; root.matrix.copy(m); root.updateMatrixWorld(true);
-  if (cadMesh) {
-    const box = new THREE.Box3().setFromObject(root); const c = box.getCenter(new THREE.Vector3());
-    size = box.getSize(new THREE.Vector3()).length();
-    if (axesHelper) scene.remove(axesHelper);
-    axesHelper = new THREE.Group();
-    const cols = [0xdd2222, 0x1a8f2a, 0x2550d8];
-    [[1,0,0],[0,1,0],[0,0,1]].forEach((d, i) => axesHelper.add(new THREE.ArrowHelper(
-      new THREE.Vector3(...d), new THREE.Vector3(0,0,0), size * 0.45, cols[i], size*0.06, size*0.03)));
-    scene.add(axesHelper);
-    controls.target.copy(c);
-    camera.position.copy(c).add(new THREE.Vector3(-size, size * 0.9, -size * 0.6));
-    camera.near = size / 1000; camera.far = size * 100; camera.updateProjectionMatrix();
-    drawMarks();
-  }
+  if (!cadMesh) return;
+  const box = new THREE.Box3().setFromObject(root); const c = box.getCenter(new THREE.Vector3());
+  size = box.getSize(new THREE.Vector3()).length();
+  if (axesHelper) scene.remove(axesHelper);
+  axesHelper = new THREE.Group();
+  [[1,0,0],[0,1,0],[0,0,1]].forEach((d, i) => axesHelper.add(new THREE.ArrowHelper(
+    new THREE.Vector3(...d), new THREE.Vector3(0,0,0), size * 0.45, [0xdd2222, 0x1a8f2a, 0x2550d8][i], size*0.06, size*0.03)));
+  scene.add(axesHelper);
+  controls.target.copy(c);
+  camera.position.copy(c).add(new THREE.Vector3(-size, size * 0.9, -size * 0.6));
+  camera.near = size / 1000; camera.far = size * 100; camera.updateProjectionMatrix();
+  drawMarks();
 }
-for (const id of ["fwd", "up", "unit"]) $(id).addEventListener("change", () => { applyTransform(); showSize(); });
 let fileExtents = null;
 function showSize() {
-  if (!fileExtents) return;
+  const box = $("sizeinfo");
+  if (!fileExtents) { box.style.display = "none"; return; }
   const ax = bodyAxes(); if (!ax) return;
   const s = UNIT[$("unit").value];
   const along = (v) => Math.abs(v.x) * fileExtents[0] + Math.abs(v.y) * fileExtents[1] + Math.abs(v.z) * fileExtents[2];
   const L = along(ax.x) * s, W = along(ax.y) * s, H = along(ax.z) * s;
   const odd = Math.max(L, W, H) > 50 || Math.max(L, W, H) < 0.02;
-  $("sizeinfo").innerHTML = `Size: length ${L.toPrecision(3)} m × width ${W.toPrecision(3)} m × height ${H.toPrecision(3)} m` +
-    (odd ? ' <b class="err">— check the units!</b>' : "");
+  box.style.display = "block"; box.classList.toggle("bad", odd);
+  box.textContent = t("sizeOk", { L: L.toPrecision(3), W: W.toPrecision(3), H: H.toPrecision(3) }) + (odd ? t("sizeBad") : "");
 }
+for (const id of ["fwd", "up", "unit"]) $(id).addEventListener("change", () => { applyTransform(); showSize(); });
 
-// ---------- upload and preview ----------
+// ---------- upload, example, preview, delete ----------
 let uploadId = null;
 $("cad").addEventListener("change", async (e) => {
   const file = e.target.files[0]; if (!file) return;
   const ext = file.name.split(".").pop().toLowerCase();
   if (["step", "stp"].includes(ext)) $("unit").value = "m";  // STEP comes in metres
-  status(`Uploading ${file.name} (${(file.size / 2**20).toFixed(1)} MB)...`);
+  status(t("uploading", { f: file.name, mb: (file.size / 2**20).toFixed(1) }));
   const form = new FormData(); form.append("file", file);
   const up = await fetch("/api/upload", { method: "POST", body: form });
   if (!up.ok) return status(await errorText(up), true);
@@ -216,47 +412,45 @@ $("cad").addEventListener("change", async (e) => {
   await loadPreview(file.name);
 });
 $("example").addEventListener("click", async () => {
-  status("Loading the example...");
+  status(t("exampleLoading"));
   const res = await fetch("/api/example", { method: "POST" });
   if (!res.ok) return status(await errorText(res), true);
   const ex = await res.json(); uploadId = ex.id;
   $("name").value = ex.spec.name; $("mass").value = ex.spec.mass; $("water").value = ex.spec.water;
   $("unit").value = ex.spec.unit; $("fwd").value = ex.spec.forward; $("up").value = ex.spec.up;
   await loadPreview(ex.filename);
-  status(ex.spec.note);
 });
 $("deletefiles").addEventListener("click", async (e) => {
   e.preventDefault(); if (!uploadId) return;
   await fetch(`/api/upload/${uploadId}`, { method: "DELETE" });
-  uploadId = null; root.clear(); cadMesh = null; $("build").disabled = true; $("result").style.display = "none";
-  $("deletefiles").style.display = "none"; status("Your files were deleted from the server.");
+  uploadId = null; root.clear(); cadMesh = null; fileExtents = null; showSize();
+  $("build").disabled = true; $("result").style.display = "none"; $("empty").style.display = "grid";
+  $("deletefiles").style.display = "none"; $("showresult").style.display = "none"; status(t("deleted"));
 });
 async function loadPreview(fileName) {
-  status("Preparing 3D preview...");
+  status(t("preview"));
   const res = await fetch(`/api/preview/${uploadId}`);
   if (!res.ok) return status(await errorText(res), true);
   const geom = new STLLoader().parse(await res.arrayBuffer());
   geom.computeVertexNormals();
   root.clear();
-  cadMesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.1,
-    roughness: 0.7, side: THREE.DoubleSide }));
-  root.add(cadMesh);
+  cadMesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.1, roughness: 0.7, side: THREE.DoubleSide }));
+  root.add(cadMesh); $("empty").style.display = "none";
   const info = await (await fetch(`/api/preview/${uploadId}/info`)).json();
-  if (!info.watertight) { $("assembly").checked = true; }
+  $("assembly").checked = !info.watertight;
   fileExtents = info.extents;
   applyTransform(); showSize();
   $("build").disabled = false; $("deletefiles").style.display = "inline";
-  status(`${fileName}: ${info.faces.toLocaleString()} faces` +
-         (info.watertight ? ", closed solid" : ", not closed: treated as an assembly") +
-         ". Check the size and that the red arrow points forward and blue points down.");
+  status(t("loaded", { f: fileName, n: info.faces.toLocaleString(), c: info.watertight ? t("closed") : t("open") }));
 }
 
 // ---------- placing thrusters, fins, parts ----------
 let mode = null; const items = [];
+function setModeHint() { $("modehint").textContent = mode ? t("clickTo", { what: t(mode) }) : t("pick"); }
 document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
   mode = mode === b.dataset.mode ? null : b.dataset.mode;
   document.querySelectorAll("[data-mode]").forEach((x) => x.classList.toggle("active", x.dataset.mode === mode));
-  $("modehint").textContent = mode ? `Click on the model to place a ${mode}.` : "Pick a tool, then click on the model to place it.";
+  setModeHint();
 }));
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let downAt = null;
 canvas.addEventListener("pointerdown", (e) => downAt = [e.clientX, e.clientY]);
@@ -266,54 +460,52 @@ canvas.addEventListener("pointerup", (e) => {
   mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(mouse, camera);
   const hit = ray.intersectObject(cadMesh)[0]; if (!hit) return;
-  const p = hit.point; const pos = [p.x, p.y, p.z].map((v) => +v.toFixed(4));
+  const pos = [hit.point.x, hit.point.y, hit.point.z].map((v) => +v.toFixed(4));
   const n = items.filter((i) => i.kind === mode).length;
   if (mode === "thruster") items.push({ kind: "thruster", name: `thruster${n}`, position: pos, direction: "+x", model: "T200", max_forward: "", max_reverse: "" });
   if (mode === "fin") items.push({ kind: "fin", name: `fin${n}`, position: pos, normal: "+y", area_cm2: 66, span_cm: 8.5, control: true });
-  if (mode === "part") items.push({ kind: "part", name: `part${n}`, position: pos, mass: 1.0, size_cm: [20, 8, 6] });
+  if (mode === "part") items.push({ kind: "part", name: `part${n}`, position: pos, mass: 1.0 });
   renderItems(); drawMarks();
 });
-
 function vecFrom(name) { const v = [0, 0, 0]; v["xyz".indexOf(name[1])] = name[0] === "-" ? -1 : 1; return v; }
-function field(it, key, label, type = "number", opts = null) {
+function field(it, key, labelKey, type = "number", opts = null) {
   const wrap = document.createElement("div");
-  wrap.innerHTML = `<label>${label}</label>`;
+  const lab = document.createElement("label"); lab.textContent = t(labelKey); wrap.append(lab);
   let el;
   if (opts) { el = document.createElement("select"); opts.forEach((o) => el.add(new Option(o, o))); }
   else { el = document.createElement("input"); el.type = type; if (type === "number") el.step = "any"; }
-  if (type === "checkbox") { el.checked = it[key]; el.style.width = "auto"; }
-  else el.value = it[key];
+  if (type === "checkbox") { el.checked = it[key]; el.style.width = "auto"; } else el.value = it[key];
   el.addEventListener("change", () => { it[key] = type === "checkbox" ? el.checked : (type === "number" ? (el.value === "" ? "" : +el.value) : el.value); drawMarks(); });
   wrap.append(el); return wrap;
 }
 function posFields(it) {
   const row = document.createElement("div"); row.className = "row3";
   ["x", "y", "z"].forEach((a, i) => {
-    const w = document.createElement("div"); w.innerHTML = `<label>${a} (m)</label>`;
+    const w = document.createElement("div"); const lab = document.createElement("label"); lab.textContent = `${a} (m)`;
     const el = document.createElement("input"); el.type = "number"; el.step = "any"; el.value = it.position[i];
-    el.addEventListener("change", () => { it.position[i] = +el.value; drawMarks(); }); w.append(el); row.append(w);
+    el.addEventListener("change", () => { it.position[i] = +el.value; drawMarks(); }); w.append(lab, el); row.append(w);
   }); return row;
 }
 function renderItems() {
   const box = $("items"); box.innerHTML = "";
   items.forEach((it, idx) => {
     const d = document.createElement("div"); d.className = "item";
-    d.innerHTML = `<header><span>${it.kind}: ${it.name}</span><button>remove</button></header>`;
-    d.querySelector("button").onclick = () => { items.splice(idx, 1); renderItems(); drawMarks(); };
-    d.append(field(it, "name", "name", "text"), posFields(it));
+    const head = document.createElement("header");
+    const title = document.createElement("span"); title.textContent = `${t(it.kind === "thruster" ? "addThruster" : it.kind === "fin" ? "addFin" : "addPart").replace("+ ", "")}: ${it.name}`;
+    const rm = document.createElement("button"); rm.textContent = t("remove");
+    rm.onclick = () => { items.splice(idx, 1); renderItems(); drawMarks(); };
+    head.append(title, rm); d.append(head, field(it, "name", "nameLbl", "text"), posFields(it));
     if (it.kind === "thruster") {
       const r = document.createElement("div"); r.className = "row";
-      r.append(field(it, "direction", "pushes towards", "text", AXES), field(it, "model", "model (T200 has limits)", "text"));
+      r.append(field(it, "direction", "pushes", "text", AXES), field(it, "model", "modelLbl", "text"));
       const r2 = document.createElement("div"); r2.className = "row";
-      r2.append(field(it, "max_forward", "max forward thrust (N)"), field(it, "max_reverse", "max reverse thrust (N)"));
+      r2.append(field(it, "max_forward", "fwdN"), field(it, "max_reverse", "revN"));
       d.append(r, r2);
     } else if (it.kind === "fin") {
       const r = document.createElement("div"); r.className = "row3";
-      r.append(field(it, "normal", "lift direction", "text", AXES), field(it, "area_cm2", "area (cm²)"), field(it, "span_cm", "span (cm)"));
-      d.append(r, field(it, "control", "movable (rudder / stern plane)", "checkbox"));
-    } else {
-      d.append(field(it, "mass", "mass (kg)"));
-    }
+      r.append(field(it, "normal", "liftDir", "text", AXES), field(it, "area_cm2", "area"), field(it, "span_cm", "span"));
+      d.append(r, field(it, "control", "movable", "checkbox"));
+    } else d.append(field(it, "mass", "partMass"));
     box.append(d);
   });
 }
@@ -323,7 +515,7 @@ function drawMarks() {
     const p = new THREE.Vector3(...it.position);
     if (it.kind === "thruster") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.direction)), p, s * 0.18, 0xff7a00, s * 0.05, s * 0.03));
     if (it.kind === "fin") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.normal)), p, s * 0.12, 0x8a2be2, s * 0.04, s * 0.025));
-    if (it.kind === "part") { const m = new THREE.Mesh(new THREE.SphereGeometry(s * 0.02), new THREE.MeshBasicMaterial({ color: 0x0aa })); m.position.copy(p); marks.add(m); }
+    if (it.kind === "part") { const m = new THREE.Mesh(new THREE.SphereGeometry(s * 0.02), new THREE.MeshBasicMaterial({ color: 0x00a0a0 })); m.position.copy(p); marks.add(m); }
   }
 }
 
@@ -331,20 +523,18 @@ function drawMarks() {
 function num(id) { const v = $(id).value; return v === "" ? null : +v; }
 function spec() {
   const ax = bodyAxes();
-  const s = {
-    name: $("name").value || "vehicle", category: "underwater", mass: num("mass"),
-    water: $("water").value, speed: num("speed") ?? 1.0,
+  const s = { name: $("name").value || "vehicle", category: "underwater", mass: num("mass"), water: $("water").value,
+    speed: num("speed") ?? 1.0,
     geometry: { unit: $("unit").value, axes: ax ? ax.yaml : ["x", "y", "z"], assembly: $("assembly").checked,
-                voxel: num("voxel") ?? 4, hydrodynamics: $("hydro").value, origin: "center" },
-  };
+                voxel: num("voxel") ?? 4, hydrodynamics: $("hydro").value, origin: "center" } };
   const measured = {};
   if (num("mvol")) measured.volume = num("mvol");
   if ([num("cgx"), num("cgy"), num("cgz")].every((v) => v !== null)) measured.r_g = [num("cgx"), num("cgy"), num("cgz")];
   if (Object.keys(measured).length) s.measured = measured;
-  const thr = items.filter((i) => i.kind === "thruster").map((t) => {
-    const o = { model: t.model || "custom", position: t.position, direction: vecFrom(t.direction) };
-    if (t.max_forward !== "") o.max_forward = t.max_forward;
-    if (t.max_reverse !== "") o.max_reverse = t.max_reverse;
+  const thr = items.filter((i) => i.kind === "thruster").map((x) => {
+    const o = { model: x.model || "custom", position: x.position, direction: vecFrom(x.direction) };
+    if (x.max_forward !== "") o.max_forward = x.max_forward;
+    if (x.max_reverse !== "") o.max_reverse = x.max_reverse;
     return o;
   });
   if (thr.length) s.thrusters = thr;
@@ -355,72 +545,95 @@ function spec() {
   if (parts.length) s.parts = parts;
   return s;
 }
+let lastResult = null;
 $("build").addEventListener("click", async () => {
-  if (!num("mass")) return status("Enter the vehicle mass first.", true);
-  $("build").disabled = true; status("Building the model (an assembly can take a minute)...");
+  if (!num("mass")) return status(t("needMass"), true);
+  $("build").disabled = true; status(t("building"));
   const res = await fetch(`/api/build/${uploadId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(spec()) });
   $("build").disabled = false;
   if (!res.ok) return status(await errorText(res), true);
-  const r = await res.json();
-  status("Done: the results panel is open on the right. Download the zip for MATLAB, Simulink and Gazebo.");
-  showResult(r);
+  lastResult = await res.json(); status(t("done")); showResult(lastResult, true);
 });
 
-
-const DOF = ["surge (u)", "sway (v)", "heave (w)", "roll (p)", "pitch (q)", "yaw (r)"];
-function n(v, digits = 4) {
-  const x = +v; if (!isFinite(x)) return "–"; if (x === 0) return "0";
-  return Math.abs(x) >= 1e4 || Math.abs(x) < 1e-3 ? x.toExponential(2) : x.toPrecision(digits);
+// ---------- results ----------
+const DOF = ["u", "v", "w", "p", "q", "r"];
+function n(v, d = 3) { const x = +v; if (!isFinite(x)) return "–"; if (x === 0) return "0";
+  return Math.abs(x) >= 1e4 || Math.abs(x) < 1e-3 ? x.toExponential(2) : x.toPrecision(d); }
+function esc(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]); }
+function card(kind, k, v, r = "") { return `<div class="card ${kind}"><div class="k">${k}</div><div class="v">${v}</div>${r ? `<div class="r">${r}</div>` : ""}</div>`; }
+function rangeCard(b, key, label, unit, factor = 1) {
+  const x = b[key]; if (!x || x.nominal === undefined) return "";
+  const vals = [x.low, x.nominal, x.high].filter((v) => v !== undefined).map((v) => v * factor);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  return card("", label, `${n(x.nominal * factor)} ${unit}`, hi - lo > 1e-9 * Math.abs(hi) ? t("rangeLbl", { a: n(lo), b: n(hi) }) + ` ${unit}` : "");
 }
-function pm(p) { // "value ± sigma unit [source]" for a scalar parameter
-  return `${n(p.value)} <span class="src">± ${n(p.sigma, 2)} ${p.unit} · ${p.source}</span>`;
-}
-function vec(p) {
-  return `[${p.value.map((x) => n(x)).join(", ")}] <span class="src">± ${n(Math.max(...p.sigma), 2)} ${p.unit} · ${p.source}</span>`;
-}
-function matrix(m, title) {
-  const labels = ["u", "v", "w", "p", "q", "r"];
-  return `<table><tr><th>${title}</th>${labels.map((l) => `<th>${l}</th>`).join("")}</tr>` +
-    m.map((row, i) => `<tr><td>${labels[i]}</td>${row.map((x) => `<td>${n(x)}</td>`).join("")}</tr>`).join("") + "</table>";
-}
-function showResult(r) {
-  const m = r.model, box = $("result");
+function checkName(c) { if (lang !== "tr") return c.name; const k = Object.keys(CHECK_TR).find((p) => c.name.includes(p)); return k ? CHECK_TR[k] : c.name; }
+function showResult(r, open) {
+  const m = r.model, b = r.behaviour || {}, box = $("result");
+  const status = (part) => (r.checks.find((c) => c.name.includes(part)) || {}).status;
+  const fails = r.checks.filter((c) => c.status === "fail").length;
+  const net = m.buoyancy.value - m.weight.value, pct = (100 * net / m.weight.value);
+  const bg = (m.r_g.value[2] - m.r_b.value[2]) * 100;
+  const cards = [
+    card(fails ? "fail" : "ok", t("validK"), fails ? t("validNo") : t("validOk")),
+    card(Math.abs(pct) < 0.5 ? "ok" : "warn", t("buoyancyK"),
+      Math.abs(pct) < 0.5 ? t("buoyNeutral") : (net > 0 ? t("buoyUp", { n: n(net), p: n(Math.abs(pct), 2) }) : t("buoyDown", { n: n(net), p: n(Math.abs(pct), 2) }))),
+    card(status("self-righting") === "ok" ? "ok" : "warn", t("rightK"), status("self-righting") === "ok" ? t("rightOk", { cm: n(bg, 2) }) : t("rightNo")),
+    card(status("directionally stable") === "ok" ? "ok" : "warn", t("stabK"), status("directionally stable") === "ok" ? t("stabOk") : t("stabNo")),
+    rangeCard(b, "top_speed", t("speedK"), "m/s"),
+    rangeCard(b, "turn_rate_fins", t("turnK"), "°/s", 180 / Math.PI),
+    rangeCard(b, "turn_rate_thrusters", t("turnK"), "°/s", 180 / Math.PI),
+    rangeCard(b, "vertical_speed", t("vertK"), "m/s"),
+    rangeCard(b, "roll_period", t("rollK"), "s"),
+    rangeCard(b, "pitch_period", t("pitchK"), "s"),
+  ].join("");
+  const w = r.warnings.join(" | ");
+  const todo = [];
+  if (fails) todo.push(t("tFail"));
+  if (/units/.test(w)) todo.push(t("tUnits"));
+  if (/not neutrally buoyant/.test(w)) todo.push(t("tBuoy"));
+  if (/self-righting/.test(w)) todo.push(t("tRight"));
+  if (/no thrusters/.test(w)) todo.push(t("tThr"));
+  if (/preset/.test(w)) todo.push(t("tPreset"));
+  if (/tilted/.test(w)) todo.push(t("tTilt"));
+  if (/closed holes|voxels|inside other solids|duplicate/.test(w)) todo.push(t("tRepair"));
+  if (/separate bodies/.test(w)) todo.push(t("tSep"));
+  todo.push(t("tCal"));
   const diag = (M) => M.value.map((row, i) => row[i]);
-  const net = m.buoyancy.value - m.weight.value;
   const inertia = diag(m.inertia_g);
   const perAxis = [
-    ["inertia about CG (kg m²)", [null, null, null, ...inertia], m.inertia_g.source],
-    ["added mass (kg, kg m²)", diag(m.M_A), m.M_A.source],
-    ["linear damping (N s/m, N m s/rad)", m.D_linear.value, m.D_linear.source],
-    ["quadratic damping (N s²/m², N m s²/rad²)", m.D_quadratic.value, m.D_quadratic.source],
+    [t("inertiaRow"), [null, null, null, ...inertia], m.inertia_g.source],
+    [t("addedRow"), diag(m.M_A), m.M_A.source],
+    [t("linRow"), m.D_linear.value, m.D_linear.source],
+    [t("quadRow"), m.D_quadratic.value, m.D_quadratic.source],
   ];
+  const matrix = (mat, title) => `<table><tr><th>${title}</th>${DOF.map((l) => `<th>${l}</th>`).join("")}</tr>` +
+    mat.map((row, i) => `<tr><td>${DOF[i]}</td>${row.map((x) => `<td>${n(x, 4)}</td>`).join("")}</tr>`).join("") + "</table>";
   box.innerHTML = `
     <button class="close" title="close">×</button>
-    <h3>Model: ${m.name}</h3>
-    <p class="eq">M ν̇ + C(ν) ν + D(ν) ν + g(η) = τ,  M = M_RB + M_A  · body frame: x forward, y right, z down</p>
-    <p><a href="/api/download/${uploadId}/${r.result}"><button class="primary" style="width:auto;margin:0">⬇ Download model (MATLAB low/nominal/high, Simulink, Gazebo, report)</button></a></p>
-    <h2>Checks</h2>
-    ${r.checks.map((c) => `<div class="check"><span class="badge ${c.status}">${c.status}</span>${c.name}: <span class="src">${c.detail}</span></div>`).join("")}
-    ${r.warnings.length ? `<h2>Warnings</h2>${r.warnings.map((w) => `<div class="check warn">⚠ ${w}</div>`).join("")}` : ""}
-    <h2>Mass and buoyancy</h2>
+    <h3>${esc(t("resTitle", { name: m.name }))}</h3>
+    <a class="dl" href="/api/download/${uploadId}/${r.result}"><button class="primary">${t("download")}</button></a>
+    <h4>${t("summary")}</h4><div class="cards">${cards}</div>
+    <h4>${t("todo")}</h4><ol class="todo">${todo.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+    <h4>${t("trustTitle")}</h4><div class="trust">${t("trustText")}</div>
+    <h4>${t("checks")}</h4>
+    ${r.checks.map((c) => `<div class="check"><span class="badge ${c.status}">${c.status}</span>${esc(checkName(c))} <span class="src">${esc(c.detail)}</span></div>`).join("")}
+    ${r.warnings.length ? `<h4>${t("warnings")}</h4>${r.warnings.map((x) => `<div class="check src">⚠ ${esc(x)}</div>`).join("")}` : ""}
+    <h4>${t("details")}</h4>
+    <p class="eq">M ν̇ + C(ν) ν + D(ν) ν + g(η) = τ,  M = M_RB + M_A</p>
     <table>
-      <tr><td>mass</td><td>${pm(m.mass)}</td></tr>
-      <tr><td>displaced volume</td><td>${pm(m.volume)}</td></tr>
-      <tr><td>weight W / buoyancy B</td><td>${n(m.weight.value)} N / ${n(m.buoyancy.value)} N</td></tr>
-      <tr><td>net buoyancy B − W</td><td>${n(net)} N ${net > 0 ? "(floats up)" : net < 0 ? "(sinks)" : ""}</td></tr>
-      <tr><td>centre of gravity r_g</td><td>${vec(m.r_g)}</td></tr>
-      <tr><td>centre of buoyancy r_b</td><td>${vec(m.r_b)}</td></tr>
+      <tr><td>${t("massRow")}</td><td>${n(m.mass.value, 4)} kg</td></tr>
+      <tr><td>${t("volRow")}</td><td>${n(m.volume.value, 4)} m³ <span class="src">${m.volume.source}</span></td></tr>
+      <tr><td>${t("wbRow")}</td><td>${n(m.weight.value, 4)} N / ${n(m.buoyancy.value, 4)} N</td></tr>
+      <tr><td>${t("cgRow")}</td><td>[${m.r_g.value.map((x) => n(x)).join(", ")}] m <span class="src">${m.r_g.source}</span></td></tr>
+      <tr><td>${t("cbRow")}</td><td>[${m.r_b.value.map((x) => n(x)).join(", ")}] m</td></tr>
     </table>
-    <h2>Per axis</h2>
-    <table><tr><th></th>${DOF.map((d) => `<th>${d}</th>`).join("")}<th>source</th></tr>
+    <table><tr><th>${t("perAxis")}</th>${DOF.map((d) => `<th>${d}</th>`).join("")}<th>${t("sourceCol")}</th></tr>
       ${perAxis.map(([label, vals, src]) => `<tr><td>${label}</td>${vals.map((v) => `<td>${v === null ? "" : n(v)}</td>`).join("")}<td class="src">${src}</td></tr>`).join("")}
     </table>
-    <p class="src">Damping cannot be computed exactly from CAD; the download also has low/high bound models for robust controller checks.</p>
-    <h2>Rigid-body mass matrix M_RB</h2>${matrix(m.M_RB, "M_RB")}
-    <h2>Added mass matrix M_A</h2>${matrix(m.M_A.value, "M_A")}
-    ${m.B_thr.length && m.B_thr[0].length ? `<h2>Thruster matrix (τ = B f)</h2>${matrix(m.B_thr.map((row) => row), "B")}` : ""}
-    <details><summary>Full text report</summary><pre>${r.report.replace(/</g, "&lt;")}</pre></details>`;
-  box.style.display = "block";
+    <details><summary>${t("matrices")}</summary>${matrix(m.M_RB, "M_RB")}${matrix(m.M_A.value, "M_A")}</details>
+    <details><summary>${t("fullReport")}</summary><pre>${esc(r.report)}</pre></details>`;
+  if (open) box.style.display = "block";
   box.querySelector(".close").onclick = () => { box.style.display = "none"; };
   $("showresult").style.display = "block";
   $("showresult").onclick = () => { box.style.display = "block"; };
@@ -430,7 +643,7 @@ async function errorText(res) {
   try { const j = await res.json(); return (j.detail || JSON.stringify(j)); } catch { return `${res.status} ${res.statusText}`; }
 }
 function status(msg, err = false) { $("status").innerHTML = ""; const d = document.createElement("div"); d.textContent = msg; if (err) d.className = "err"; $("status").append(d); }
-resize();
+applyLang(); resize();
 </script>
 </body>
 </html>

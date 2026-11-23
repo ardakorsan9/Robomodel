@@ -192,12 +192,33 @@ def _run_build(folder: str, spec: dict, result_id: str) -> None:
                 "bounds": np.asarray(model.hull.bounds).tolist(),
             },
             "model": data,  # every value with sigma, source and unit
+            "behaviour": _behaviour(model),
         }
         (out / "result.json").write_text(json.dumps(result, default=float), encoding="utf-8")
     except Exception as e:  # anything unexpected: tell the user, keep the server alive
         (out / "error.json").write_text(
             json.dumps({"status": 500, "detail": f"model building failed: {type(e).__name__}: {e}"})
         )
+
+
+def _behaviour(model) -> dict:
+    """Plain numbers a user cares about, for the nominal model and the low/high bounds:
+    top speed, turn rate, roll and pitch periods, net buoyancy. Keys are stable names."""
+    from robomodel.model_range import model_range
+    from robomodel.wizard import _metrics
+
+    keys = {"son hız": "top_speed", "dönüş hızı (5° dümen)": "turn_rate_fins",
+            "dönüş hızı (%50 itici)": "turn_rate_thrusters",
+            "dikey hız (%50 itici)": "vertical_speed", "yuvarlanma periyodu": "roll_period",
+            "yunuslama periyodu": "pitch_period", "net kaldırma": "net_buoyancy"}
+    out: dict = {}
+    try:
+        for label, variant in model_range(model).items():
+            for name, value in _metrics(variant, variant.dynamics()).items():
+                out.setdefault(keys.get(name, name), {})[label] = float(value)
+    except Exception as e:  # a summary must never break the build
+        out["error"] = str(e)
+    return out
 
 
 @app.post("/api/build/{upload_id}")

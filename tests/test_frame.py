@@ -111,6 +111,7 @@ def test_stubby_box_uses_frame_method(tmp_path):
 BLUEROV2 = ROOT / "examples" / "bluerov2_heavy.yaml"
 
 
+@pytest.mark.heavy
 @pytest.mark.skipif(
     not Path(
         "data/bluerov2/BROV2-HEAVY-ASM-BROV2-HEAVY-R1.STL"
