@@ -103,7 +103,29 @@ kalamayacağını, hover gazını, itki/ağırlık oranını ve rotorların dör
 yunuslama, dönüş) kontrol edip etmediğini söyler. MATLAB örneği hover gazıyla başlar ve drone
 yerinde durur; kontrolcünü bunun üstüne kurarsın. Doğruluk raporu: `docs/dogrulama_drone.md`.
 
-## 9. Gazebo (ROS 2)
+## 9. Kara robotu (tekerlekli, paletli)
+
+Web sayfasında **Kara robotu**'nu seç (YAML'da `category: ground`) ve zemini belirle (beton, iç
+mekân, asfalt, çakıl, çim, kum). 3. adımda **+ tekerlek / palet** ile her tekerleğin
+**göbeğine** tıkla. Her tekerlek için şunları gir:
+
+- yarıçap ve genişlik,
+- tekerlek + motor kütlesi,
+- tahrikli mi, yönlendirmeli mi, sarhoş teker mi,
+- tahrikliyse motor değerleri: tekerlekte, yani dişli kutusundan sonra durma torku (N·m) ve
+  yüksüz hız (rpm).
+
+Rapor şunları söyler:
+- robot tekerlekleri üstünde duruyor mu,
+- kaç derecede devrilir,
+- son hız ve azami ivme,
+- çıkabileceği en dik eğim,
+- dönüş hızı ya da en dar dönüş yarıçapı.
+
+MATLAB çıktısında `robomodel_ground_dynamics.m` var: girdi `u = [tahrik komutları; direksiyon
+açıları]`, durum `[x y ψ u v r]`. Doğruluk raporu: `docs/dogrulama_kara.md`.
+
+## 10. Gazebo (ROS 2)
 
 ```bash
 uv run robomodel gazebo arac.yaml -o gz

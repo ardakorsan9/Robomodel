@@ -199,3 +199,40 @@ def test_drone_build():
         io.BytesIO(client.get(f"/api/download/{upload}/{body['result']}").content)
     ).namelist()
     assert "web_quad/gazebo/README.txt" in names and "web_quad/matlab/web_quad_params.m" in names
+
+
+def test_ground_robot_build():
+    chassis = trimesh.creation.box([500, 300, 120])  # mm
+    buf = io.BytesIO()
+    chassis.export(buf, file_type="stl")
+    r = client.post("/api/upload", files={"file": ("rover.stl", buf.getvalue(), "model/stl")})
+    upload = r.json()["id"]
+    motor = {"driven": True, "stall_torque": 2.5, "no_load_rpm": 150}
+    wheels = [
+        {"name": n, "position": [x, y, 0.06], "radius": 0.1, "mass": 0.6, **motor}
+        for n, x, y in (
+            ("fl", 0.18, -0.2),
+            ("fr", 0.18, 0.2),
+            ("rl", -0.18, -0.2),
+            ("rr", -0.18, 0.2),
+        )
+    ]
+    spec = {
+        "name": "web_rover",
+        "category": "ground",
+        "mass": 8.0,
+        "surface": "grass",
+        "geometry": {"unit": "mm"},
+        "wheels": wheels,
+    }
+    r = client.post(f"/api/build/{upload}", json=spec)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["summary"]["category"] == "ground"
+    assert body["model"]["surface"]["mu"] == 0.45
+    assert {"top_speed", "max_slope", "turn_rate", "tip_front"} <= set(body["behaviour"])
+    assert all(c["status"] != "fail" for c in body["checks"])
+    names = zipfile.ZipFile(
+        io.BytesIO(client.get(f"/api/download/{upload}/{body['result']}").content)
+    ).namelist()
+    assert "web_rover/matlab/web_rover_params.m" in names and "web_rover/report.txt" in names

@@ -149,9 +149,15 @@ def _run_build(folder: str, spec: dict, result_id: str) -> None:
         geometry.pop("primitive", None)
         geometry["file"] = str(source)
         spec = dict(spec, geometry=geometry)
+        from robomodel.ground import GroundError
+
         try:
-            model = build_model(parse_vehicle(spec, base_dir=folder))
-        except (VehicleError, GeometryError) as e:
+            vehicle = parse_vehicle(spec, base_dir=folder)
+            if vehicle.category == "ground":
+                _ground_build(vehicle, spec, geometry, folder, out, result_id)
+                return
+            model = build_model(vehicle)
+        except (VehicleError, GeometryError, GroundError) as e:
             (out / "error.json").write_text(json.dumps({"status": 422, "detail": str(e)}))
             return
 
@@ -210,6 +216,40 @@ def _run_build(folder: str, spec: dict, result_id: str) -> None:
         (out / "error.json").write_text(
             json.dumps({"status": 500, "detail": f"model building failed: {type(e).__name__}: {e}"})
         )
+
+
+def _ground_build(vehicle, spec, geometry, folder: Path, out: Path, result_id: str) -> None:
+    """Ground robot: its own planar model, report and MATLAB files."""
+    from robomodel import ground
+    from robomodel.ground_matlab import write_ground_matlab
+
+    gm = ground.build_ground_model(vehicle)
+    name = (folder / "name.txt").read_text(encoding="utf-8")
+    shown = dict(spec, geometry=dict(geometry, file=name))
+    (out / "vehicle.yaml").write_text(yaml.safe_dump(shown, sort_keys=False), encoding="utf-8")
+    text = ground.report(gm)
+    (out / "report.txt").write_text(text + "\n", encoding="utf-8")
+    data = ground.to_dict(gm)
+    (out / "model.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    write_ground_matlab(gm, out / "matlab")
+    with zipfile.ZipFile(folder / f"{result_id}.zip", "w", zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(out.rglob("*")):
+            if p.is_file() and p.name != "result.json":
+                z.write(p, Path(vehicle.name) / p.relative_to(out))
+    result = {
+        "result": result_id,
+        "report": text,
+        "checks": data["checks"],
+        "warnings": gm.warnings,
+        "summary": {
+            "category": "ground",
+            "mass": gm.m,
+            "bounds": np.asarray(gm.hull.bounds).tolist(),
+        },
+        "model": data,
+        "behaviour": ground.behaviour(gm),
+    }
+    (out / "result.json").write_text(json.dumps(result, default=float), encoding="utf-8")
 
 
 def _behaviour(model) -> dict:

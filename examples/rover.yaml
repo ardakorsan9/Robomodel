@@ -1,0 +1,19 @@
+# A 4-wheel skid-steer rover (like a school robotics-club rover): 0.5 x 0.4 m chassis,
+# 0.1 m wheels, every wheel driven by a geared DC motor. Motor data at the wheel (after the
+# gearbox): stall torque 2.5 N m, no-load 150 rpm.
+name: rover4
+category: ground
+mass: 8.0
+surface: concrete
+geometry:
+  primitive: box               # stand-in for the chassis CAD
+  length: 0.5
+  width: 0.3
+  height: 0.12
+parts:
+  - {name: battery, mass: 1.5, position: [0, 0, 0.02], shape: box, size: [0.2, 0.1, 0.06]}
+wheels:
+  - {name: fl, position: [0.18, -0.2, 0.06], radius: 0.1, width: 0.05, mass: 0.6, driven: true, stall_torque: 2.5, no_load_rpm: 150}
+  - {name: fr, position: [0.18, 0.2, 0.06], radius: 0.1, width: 0.05, mass: 0.6, driven: true, stall_torque: 2.5, no_load_rpm: 150}
+  - {name: rl, position: [-0.18, -0.2, 0.06], radius: 0.1, width: 0.05, mass: 0.6, driven: true, stall_torque: 2.5, no_load_rpm: 150}
+  - {name: rr, position: [-0.18, 0.2, 0.06], radius: 0.1, width: 0.05, mass: 0.6, driven: true, stall_torque: 2.5, no_load_rpm: 150}

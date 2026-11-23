@@ -46,6 +46,8 @@
   .types button.active { background:#eaf2ff; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
   body.air .wateronly { display:none !important; }
   body:not(.air) .aironly { display:none !important; }
+  body.ground .wateronly { display:none !important; }
+  body:not(.ground) .groundonly { display:none !important; }
   .soon { display:inline-block; background:#eef0f3; color:var(--muted); border-radius:8px; padding:0 6px; font-size:10.5px; margin-left:4px; }
   .size { background:#eef7ee; border-radius:7px; padding:6px 9px; font-size:12.5px; margin-top:8px; display:none; }
   .size.bad { background:#fff1f0; }
@@ -119,6 +121,8 @@
     <div class="row">
       <div><label><span data-i18n="units"></span></label>
         <select id="unit"><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option></select></div>
+      <div class="groundonly"><label><span data-i18n="surfaceLbl"></span></label>
+        <select id="surface"><option value="concrete" data-i18n="sConcrete"></option><option value="indoor" data-i18n="sIndoor"></option><option value="asphalt" data-i18n="sAsphalt"></option><option value="gravel" data-i18n="sGravel"></option><option value="grass" data-i18n="sGrass"></option><option value="sand" data-i18n="sSand"></option></select></div>
       <div class="wateronly"><label><span data-i18n="water"></span></label>
         <select id="water"><option value="fresh" data-i18n="fresh"></option><option value="sea" data-i18n="sea"></option></select></div>
     </div>
@@ -159,6 +163,7 @@
       <button data-mode="thruster" class="wateronly" data-i18n="addThruster"></button>
       <button data-mode="fin" class="wateronly" data-i18n="addFin"></button>
       <button data-mode="rotor" class="aironly" data-i18n="addRotor"></button>
+      <button data-mode="wheel" class="groundonly" data-i18n="addWheel"></button>
       <button data-mode="part" data-i18n="addPart"></button>
     </div>
     <div class="hint" id="modehint"></div>
@@ -213,6 +218,19 @@ const T = {
     cg: "Ağırlık merkezi x, y, z (gövde ekseni)",
     s3: "İticiler, kanatlar, ağır parçalar", s3why: "Bir araç seç, sonra 3B modelin üzerinde yerine tıkla. Konumlar metre, gövde ekseninde (x ileri, y sağ, z aşağı).",
     addThruster: "+ itici", addFin: "+ kanat / dümen",
+    addWheel: "+ tekerlek / palet",
+    wheel: "tekerleğin (göbeğine tıkla)", radiusCm: "yarıçap (cm)", widthCm: "genişlik (cm)", wheelG: "tekerlek + motor kütlesi (g)",
+    drivenLbl: "tahrikli", steeredLbl: "yönlendirmeli", casterLbl: "sarhoş teker",
+    stallLbl: "tekerlekte durma torku (N m)", rpmLbl: "tekerlekte yüksüz hız (rpm)",
+    surfaceLbl: "Zemin", sConcrete: "beton", sIndoor: "iç mekân (fayans, ahşap)", sAsphalt: "asfalt", sGravel: "çakıl", sGrass: "çim", sSand: "kum",
+    standK: "Tekerlekleri üstünde duruyor", standOk: "evet, ağırlık merkezi tekerleklerin arasında", standNo: "HAYIR: devrilir, ağırlık merkezi tekerleklerin dışında",
+    tipK: "Devrilme payı", tipV: "{a}° eğimde devrilir (ağırlık merkezi yerden {h} cm)",
+    accelK: "Azami ivme", slopeK: "Çıkabileceği en dik eğim", radiusK: "En dar dönüş yarıçapı",
+    tPartsG: "Bataryayı ve motorları parça olarak ekle (ya da tekerlek kütlesini gir): ağırlık merkezi yüksekliği ve atalet bunlara bağlı.",
+    tCGG: "Devrilme sınırları ağırlık merkezinin yüksekliğine bağlı: robot uzunsa ya da eğim çıkacaksa bunu ölç.",
+    tSurface: "Tutunma ve yuvarlanma direnci zemin için tipik değerler: bir yaylı kantarla çekme testi bunları ölçer.",
+    downloadG: "⬇ Modeli indir (MATLAB alt/orta/üst, rapor)",
+    wheelCol: "tekerlek", loadCol: "yük (N)", stallCol: "tahrik kuvveti (N)",
     addRotor: "+ rotor (pervane)", spinLbl: "dönüş yönü (üstten bakınca)", maxThrust: "azami itki (N, itki testinden)", propIn: "pervane çapı (inç)", motorG: "motor + pervane kütlesi (g)",
     rotor: "rotorun", addPart: "+ ağır parça (batarya)",
     pick: "Bir araç seç, sonra modelin üzerine tıkla.", clickTo: "Modelin üzerinde {what} yerine tıkla.",
@@ -297,7 +315,19 @@ const T = {
     measuredTitle: "I have measured values (optional)", mvol: "Volume (weighing in water)",
     cg: "Centre of gravity x, y, z (body frame)",
     s3: "Thrusters, fins, heavy parts", s3why: "Pick a tool, then click on the 3D model where it sits. Positions in metres, body frame (x forward, y right, z down).",
-    addThruster: "+ thruster", addFin: "+ fin / rudder", addRotor: "+ rotor",
+    addThruster: "+ thruster", addFin: "+ fin / rudder", addRotor: "+ rotor", addWheel: "+ wheel / track",
+    wheel: "wheel (click its hub)", radiusCm: "radius (cm)", widthCm: "width (cm)", wheelG: "wheel + motor mass (g)",
+    drivenLbl: "driven", steeredLbl: "steered", casterLbl: "caster (swivels)",
+    stallLbl: "stall torque at the wheel (N m)", rpmLbl: "no-load speed at the wheel (rpm)",
+    surfaceLbl: "Ground", sConcrete: "concrete", sIndoor: "indoor (tiles, wood)", sAsphalt: "asphalt", sGravel: "gravel", sGrass: "grass", sSand: "sand",
+    standK: "Stands on its wheels", standOk: "yes, the CG is inside the wheel base", standNo: "NO: tips over, the CG is outside the wheels",
+    tipK: "Tip-over margin", tipV: "tips at {a}° tilt (CG {h} cm above ground)",
+    accelK: "Max acceleration", slopeK: "Steepest slope", radiusK: "Tightest turn radius",
+    tPartsG: "List the battery and motors (or give wheel mass): CG height and inertia depend on them.",
+    tCGG: "Tip-over limits depend on the CG height: measure it if the robot is tall or climbs slopes.",
+    tSurface: "Grip and rolling resistance are typical values for the surface: a pull test (spring scale) measures them.",
+    downloadG: "⬇ Download model (MATLAB low/nominal/high, report)",
+    wheelCol: "wheel", loadCol: "load (N)", stallCol: "drive force (N)",
     spinLbl: "spin (seen from above)", maxThrust: "max thrust (N, thrust stand)", propIn: "propeller diameter (inch)", motorG: "motor + prop mass (g)",
     rotor: "rotor", addPart: "+ heavy part (battery)",
     pick: "Pick a tool, then click on the model.", clickTo: "Click on the model where the {what} sits.",
@@ -368,6 +398,12 @@ const CHECK_TR = {
   "velocities decay at rest": "Durgun halde hızlar sönüyor",
   "stable in roll": "Yan yatmada dengeli (GM_T > 0)",
   "can hover level": "Düz şekilde havada asılı kalabiliyor",
+  "mass and yaw inertia": "Kütle ve dönme ataleti pozitif",
+  "stands on its wheels": "Tekerlekleri üstünde duruyor (ağırlık merkezi tekerleklerin arasında)",
+  "tip-over margin": "Devrilme payı en az 20°",
+  "has driven wheels": "Tahrikli tekerlek var",
+  "can turn": "Dönebiliyor (yönlendirme ya da iki yanda tahrik)",
+  "coasting loses energy": "Serbest yuvarlanmada enerji azalıyor (simülasyon)",
   "thrust-to-weight": "İtki/ağırlık en az 1,5",
   "rotors control thrust": "Rotorlar itki, yatış, yunuslama ve dönüşü kontrol ediyor",
   "stable in pitch": "Baş-kıç yönünde dengeli (GM_L > 0)",
@@ -378,11 +414,11 @@ const CHECK_TR = {
 // Robot types. `ready` = supported now; the others are shown as coming soon.
 const TYPES = [
   { id: "underwater", ready: true }, { id: "surface", ready: true },
-  { id: "drone", ready: true }, { id: "ground", ready: false },
+  { id: "drone", ready: true }, { id: "ground", ready: true },
   { id: "arm", ready: false }, { id: "other", ready: false },
 ];
 let robotType = "underwater";
-const CATEGORY = { underwater: "underwater", surface: "surface", drone: "aerial" };
+const CATEGORY = { underwater: "underwater", surface: "surface", drone: "aerial", ground: "ground" };
 function renderTypes() {
   const box = document.getElementById("types"); box.innerHTML = "";
   for (const ty of TYPES) {
@@ -395,7 +431,8 @@ function renderTypes() {
   }
   document.getElementById("example").style.display = robotType === "underwater" ? "block" : "none";
   document.body.classList.toggle("air", robotType === "drone");
-  if (robotType === "drone" && (mode === "thruster" || mode === "fin")) mode = null;
+  document.body.classList.toggle("ground", robotType === "ground");
+  if ((robotType === "drone" || robotType === "ground") && (mode === "thruster" || mode === "fin")) mode = null;
 }
 let lang = localStorage.getItem("robomodel-lang") || ((navigator.language || "").startsWith("tr") ? "tr" : "en");
 const t = (k, vars = {}) => (T[lang][k] ?? T.en[k] ?? k).replace(/\{(\w+)\}/g, (_, v) => vars[v] ?? "");
@@ -556,6 +593,7 @@ canvas.addEventListener("pointerup", (e) => {
   if (mode === "thruster") items.push({ kind: "thruster", name: `thruster${n}`, position: pos, direction: "+x", model: "T200", max_forward: "", max_reverse: "" });
   if (mode === "fin") items.push({ kind: "fin", name: `fin${n}`, position: pos, normal: "+y", area_cm2: 66, span_cm: 8.5, control: true });
   if (mode === "rotor") items.push({ kind: "rotor", name: `rotor${n}`, position: pos, spin: n % 2 ? "cw" : "ccw", max_thrust: "", diameter_in: 10, motor_g: "" });
+  if (mode === "wheel") items.push({ kind: "wheel", name: `wheel${n}`, position: pos, radius_cm: 5, width_cm: 3, driven: true, steered: false, caster: false, stall: "", rpm: "", mass_g: "" });
   if (mode === "part") items.push({ kind: "part", name: `part${n}`, position: pos, mass: 1.0 });
   renderItems(); drawMarks();
 });
@@ -583,7 +621,7 @@ function renderItems() {
   items.forEach((it, idx) => {
     const d = document.createElement("div"); d.className = "item";
     const head = document.createElement("header");
-    const toolKey = { thruster: "addThruster", fin: "addFin", rotor: "addRotor", part: "addPart" }[it.kind];
+    const toolKey = { thruster: "addThruster", fin: "addFin", rotor: "addRotor", wheel: "addWheel", part: "addPart" }[it.kind];
     const title = document.createElement("span"); title.textContent = `${t(toolKey).replace("+ ", "")}: ${it.name}`;
     const rm = document.createElement("button"); rm.textContent = t("remove");
     rm.onclick = () => { items.splice(idx, 1); renderItems(); drawMarks(); };
@@ -594,6 +632,14 @@ function renderItems() {
       const r2 = document.createElement("div"); r2.className = "row";
       r2.append(field(it, "max_forward", "fwdN"), field(it, "max_reverse", "revN"));
       d.append(r, r2);
+    } else if (it.kind === "wheel") {
+      const r = document.createElement("div"); r.className = "row3";
+      r.append(field(it, "radius_cm", "radiusCm"), field(it, "width_cm", "widthCm"), field(it, "mass_g", "wheelG"));
+      const r2 = document.createElement("div"); r2.className = "row3";
+      r2.append(field(it, "driven", "drivenLbl", "checkbox"), field(it, "steered", "steeredLbl", "checkbox"), field(it, "caster", "casterLbl", "checkbox"));
+      const r3 = document.createElement("div"); r3.className = "row";
+      r3.append(field(it, "stall", "stallLbl"), field(it, "rpm", "rpmLbl"));
+      d.append(r, r2, r3);
     } else if (it.kind === "rotor") {
       const r = document.createElement("div"); r.className = "row";
       r.append(field(it, "spin", "spinLbl", "text", ["cw", "ccw"]), field(it, "max_thrust", "maxThrust"));
@@ -614,6 +660,11 @@ function drawMarks() {
     const p = new THREE.Vector3(...it.position);
     if (it.kind === "thruster") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.direction)), p, s * 0.18, 0xff7a00, s * 0.05, s * 0.03));
     if (it.kind === "fin") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.normal)), p, s * 0.12, 0x8a2be2, s * 0.04, s * 0.025));
+    if (it.kind === "wheel") {
+      const r = Math.max(+it.radius_cm || 5, 0.1) / 100, w = Math.max(+it.width_cm || 3, 0.1) / 100;
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(r, r, w, 32), new THREE.MeshBasicMaterial({ color: it.driven ? 0x2e7d32 : 0x777777, transparent: true, opacity: 0.6 }));
+      wheel.position.copy(p); marks.add(wheel);  // cylinder axis is y = the axle (body y)
+    }
     if (it.kind === "rotor") {
       const r = Math.max((+it.diameter_in || 10) * 0.0254 / 2, 1e-3);  // scene is in body metres
       const disk = new THREE.Mesh(new THREE.CircleGeometry(r, 32), new THREE.MeshBasicMaterial({ color: it.spin === "cw" ? 0x2e7dd7 : 0xd7472e, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
@@ -649,6 +700,17 @@ function spec() {
     return o;
   });
   if (rotors.length && robotType === "drone") s.rotors = rotors;
+  const wheels = items.filter((i) => i.kind === "wheel").map((x) => {
+    const o = { name: x.name, position: x.position, radius: (+x.radius_cm || 0) / 100, width: (+x.width_cm || 0) / 100,
+      driven: !!x.driven, steered: !!x.steered, caster: !!x.caster };
+    if (x.driven) { o.stall_torque = x.stall === "" ? null : x.stall; o.no_load_rpm = x.rpm === "" ? null : x.rpm; }
+    if (x.mass_g !== "" && +x.mass_g > 0) o.mass = x.mass_g / 1000;
+    return o;
+  });
+  if (robotType === "ground") {
+    s.wheels = wheels; s.surface = $("surface").value; delete s.water; delete s.geometry.hydrodynamics;
+    delete s.thrusters; delete s.fins;
+  }
   if (robotType === "drone") { delete s.water; s.air = 1.225; delete s.geometry.hydrodynamics; }
   const fins = items.filter((i) => i.kind === "fin").map((f) => ({ name: f.name, position: f.position,
     normal: vecFrom(f.normal), area: f.area_cm2 / 1e4, span: f.span_cm / 100, control: !!f.control }));
@@ -680,7 +742,49 @@ function rangeCard(b, key, label, unit, factor = 1) {
   return card("", label, `${n(x.nominal * factor)} ${unit}`, hi - lo > 1e-9 * Math.abs(hi) ? t("rangeLbl", { a: n(lo), b: n(hi) }) + ` ${unit}` : "");
 }
 function checkName(c) { if (lang !== "tr") return c.name; const k = Object.keys(CHECK_TR).find((p) => c.name.includes(p)); return k ? CHECK_TR[k] : c.name; }
+function showGroundResult(r, open) {
+  const m = r.model, b = r.behaviour || {}, box = $("result");
+  const status = (part) => (r.checks.find((c) => c.name.includes(part)) || {}).status;
+  const fails = r.checks.filter((c) => c.status === "fail").length;
+  const tips = m.tip_limits_deg || {};
+  const minTip = Math.min(...Object.values(tips));
+  const cards = [
+    card(fails ? "fail" : "ok", t("validK"), fails ? t("validNo") : t("validOk")),
+    card(status("stands on its wheels") === "ok" ? "ok" : "fail", t("standK"), status("stands on its wheels") === "ok" ? t("standOk") : t("standNo")),
+    isFinite(minTip) ? card(minTip >= 20 ? "ok" : "warn", t("tipK"), t("tipV", { a: n(minTip, 3), h: n(100 * m.cg_height, 3) })) : "",
+    rangeCard(b, "top_speed", t("speedK"), "m/s"),
+    rangeCard(b, "max_acceleration", t("accelK"), "m/s²"),
+    rangeCard(b, "max_slope", t("slopeK"), "°"),
+    rangeCard(b, "turn_rate", t("turnK"), "°/s", 180 / Math.PI),
+    rangeCard(b, "min_turn_radius", t("radiusK"), "m"),
+  ].join("");
+  const w = r.warnings.join(" | "), todo = [];
+  if (fails) todo.push(t("tFail"));
+  if (/no parts listed/.test(w)) todo.push(t("tPartsG"));
+  if (/CG height/.test(w)) todo.push(t("tCGG"));
+  todo.push(t("tSurface"));
+  box.innerHTML = `
+    <button class="close" title="close">×</button>
+    <h3>${esc(t("resTitle", { name: m.name }))}</h3>
+    <a class="dl" href="/api/download/${uploadId}/${r.result}"><button class="primary">${t("downloadG")}</button></a>
+    <h4>${t("summary")}</h4><div class="cards">${cards}</div>
+    <h4>${t("todo")}</h4><ol class="todo">${todo.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+    <h4>${t("checks")}</h4>
+    ${r.checks.map((c) => `<div class="check"><span class="badge ${c.status}">${c.status}</span>${esc(checkName(c))} <span class="src">${esc(c.detail)}</span></div>`).join("")}
+    ${r.warnings.length ? `<h4>${t("warnings")}</h4>${r.warnings.map((x) => `<div class="check src">⚠ ${esc(x)}</div>`).join("")}` : ""}
+    <h4>${t("details")}</h4>
+    <p class="eq">m (u̇ − v r) = ΣFx,  m (v̇ + u r) = ΣFy,  I_z ṙ = Σ(x Fy − y Fx)</p>
+    <table><tr><th>${t("wheelCol")}</th><th>x</th><th>y</th><th>${t("loadCol")}</th><th>${t("stallCol")}</th></tr>
+      ${m.contacts.map((c) => `<tr><td>${esc(c.wheel)}</td><td>${n(c.xy_from_cg[0])}</td><td>${n(c.xy_from_cg[1])}</td><td>${n(c.normal_load)}</td><td>${n(c.stall_force)}</td></tr>`).join("")}
+    </table>
+    <details><summary>${t("fullReport")}</summary><pre>${esc(r.report)}</pre></details>`;
+  if (open) box.style.display = "block";
+  box.querySelector(".close").onclick = () => { box.style.display = "none"; };
+  $("showresult").style.display = "block";
+  $("showresult").onclick = () => { box.style.display = "block"; };
+}
 function showResult(r, open) {
+  if (r.summary && r.summary.category === "ground") return showGroundResult(r, open);
   const m = r.model, b = r.behaviour || {}, box = $("result");
   const status = (part) => (r.checks.find((c) => c.name.includes(part)) || {}).status;
   const fails = r.checks.filter((c) => c.status === "fail").length;

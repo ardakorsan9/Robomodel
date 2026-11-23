@@ -9,8 +9,8 @@ M ν̇ + C(ν) ν + D(ν) ν + g(η) = τ,   M = M_RB + M_A
 
 with MATLAB, Simulink and Gazebo files, automatic sanity checks, and an honest statement of how
 far each number can be trusted. Supported: underwater vehicles (torpedo AUVs and open-frame
-ROVs), surface vessels (boats, USVs) and multirotor drones. Ground robots and arms share the
-same core (see the multibody section) and come to the web page next.
+ROVs), surface vessels (boats, USVs), multirotor drones and wheeled / tracked ground robots.
+Jointed robots (arms, legs) have a multibody core on the command line.
 
 Türkçe kılavuz: [docs/KILAVUZ.md](docs/KILAVUZ.md)
 
@@ -151,6 +151,33 @@ The MATLAB example starts at the hover commands. Torque/thrust ratio (from the d
 `torque_ratio` is given) and drag are estimates; thrust falling with airspeed, motor lag and
 gyroscopic effects are not modelled; no Gazebo export yet. [Report](docs/dogrulama_drone.md).
 
+## Ground robots (wheeled, skid-steer, tracked)
+
+Set `category: ground` and list the wheels (click their hubs on the web page). robomodel gives a
+planar model `[x, y, ψ, u, v, r]` with wheel-ground contact: DC-motor drive lines, rolling
+resistance, side friction with slip, the friction circle; static wheel loads, tip-over angles
+from the CG height, top speed, traction-limited acceleration, steepest slope and turning.
+
+```yaml
+name: rover4
+category: ground
+mass: 8.0
+surface: concrete               # indoor, asphalt, gravel, grass, sand, or {mu: .., rolling: ..}
+geometry: {file: chassis.stl, unit: mm}
+parts:
+  - {name: battery, mass: 1.5, position: [0, 0, 0.02]}
+wheels:                         # position = wheel centre; motor data at the wheel
+  - {name: fl, position: [0.18, -0.2, 0.06], radius: 0.1, mass: 0.6, driven: true, stall_torque: 2.5, no_load_rpm: 150}
+  - {name: fr, position: [0.18, 0.2, 0.06], radius: 0.1, mass: 0.6, driven: true, stall_torque: 2.5, no_load_rpm: 150}
+  - {name: c, position: [-0.2, 0, 0.11], radius: 0.05, caster: true}
+  # steered: true (max_steer: 35) for car-like steering; track_length: 0.4 for a track
+```
+
+Validated against hand calculations (loads, tip angles, top speed, μg start, differential and
+bicycle kinematics); MATLAB ode15s matches the Python model to 10⁻⁷. Grip and rolling
+resistance are surface estimates with a range; load transfer, suspension and slopes are not
+modelled. [Report](docs/dogrulama_kara.md).
+
 ## Robots with joints (arms, legs, wheeled bases)
 
 A multibody robot is a tree of links connected by joints. Each link's mass properties come
@@ -216,7 +243,8 @@ simulation), self-righting, neutral buoyancy, stability at rest and at cruise sp
 - Gazebo: control-fin deflections and the water current are not exported yet.
 - Surface vessels: yaw-rate derivatives are weak (turns too fast), no waves, no Gazebo export.
 - Drones: drag and torque ratio are estimates; no thrust loss with airspeed; no Gazebo export.
-- Ground robots and arms on the web page: not yet (command line `robomodel robot` works).
+- Ground robots: planar, flat ground, static wheel loads; grip is an estimate.
+- Arms and legged robots on the web page: not yet (command line `robomodel robot` works).
 
 ## Tests
 
@@ -241,6 +269,7 @@ uv run pytest -m heavy   # also the BlueROV2 test (needs its 309 MB CAD, ~4 GB R
 | `src/robomodel/bem.py` | Boundary element added mass (optional `robomodel[bem]`) |
 | `src/robomodel/surface.py` | Floating position, GM, GZ curve, restoring matrix, mirror-image hull |
 | `src/robomodel/aerial.py` | Drone hover allocation, thrust-to-weight, rotor drag |
+| `src/robomodel/ground.py`, `ground_matlab.py` | Ground robots: wheel contact, loads, tip-over, MATLAB |
 | `src/robomodel/multihull.py` | Separate hulls computed one by one and added up |
 | `src/robomodel/multibody/` | Links, joints, RNEA/CRBA dynamics, robot files, URDF |
 | `validation/` | REMUS 100, BlueROV2 and calibration studies (write the reports in `docs/`) |

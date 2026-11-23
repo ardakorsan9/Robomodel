@@ -12,7 +12,17 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-CATEGORIES = ("underwater", "surface", "aerial")
+CATEGORIES = ("underwater", "surface", "aerial", "ground")
+# Ground: (friction coefficient mu, rolling resistance coefficient) of rubber wheels, typical
+# handbook values (e.g. Wong, Theory of Ground Vehicles), assumed: measure if it matters.
+SURFACES = {
+    "concrete": (0.8, 0.015),
+    "asphalt": (0.8, 0.015),
+    "indoor": (0.6, 0.01),  # tiles, wood, linoleum
+    "gravel": (0.6, 0.05),
+    "grass": (0.45, 0.1),
+    "sand": (0.4, 0.15),
+}
 AIR_DENSITY = 1.225  # kg/m^3, sea level, 15 C (ISA)
 WATER_DENSITY = {"sea": 1025.0, "fresh": 1000.0}  # kg/m^3
 
@@ -143,6 +153,23 @@ class Fin:
 
 
 @dataclass(frozen=True)
+class Wheel:
+    """A wheel (or track) of a ground robot. `position` is the wheel centre (axle)."""
+
+    name: str
+    position: np.ndarray  # body frame, m
+    radius: float  # m
+    width: float = 0.0  # m
+    driven: bool = False
+    steered: bool = False
+    max_steer: float = np.radians(35.0)  # rad
+    caster: bool = False  # swivels freely: carries load, gives no side force
+    stall_torque: float = 0.0  # N m at the wheel (after the gearbox), full command, standstill
+    no_load_speed: float = 0.0  # rad/s at the wheel, full command, no load
+    track_length: float = 0.0  # m; > 0: a track whose ground contact is this long
+
+
+@dataclass(frozen=True)
 class Measured:
     """Values measured on the real vehicle; they replace the CAD estimates."""
 
@@ -195,6 +222,8 @@ class Vehicle:
     calibration: Calibration = field(default_factory=Calibration)
     source: Path | None = None  # the YAML file it was read from, for provenance
     current: np.ndarray = field(default_factory=lambda: np.zeros(3))  # NED, m/s
+    wheels: tuple[Wheel, ...] = ()
+    surface: tuple[str, float, float] = ("concrete", 0.8, 0.015)  # name, mu, rolling coeff
 
 
 def load_vehicle(path: str | Path) -> Vehicle:
@@ -225,7 +254,7 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         problems.append(f"'category' must be one of {list(CATEGORIES)}, got {category!r}")
 
     mass = _positive(data.get("mass"), "mass", problems)
-    if category == "aerial":
+    if category in ("aerial", "ground"):
         water_density = _air_density(data.get("air", AIR_DENSITY), problems)  # fluid density
     else:
         water_density = _water_density(data.get("water", "sea"), problems)
@@ -254,6 +283,13 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         for i, raw in enumerate(_list(data.get("fins"), "fins", problems))
         if (f := _fin(raw, i, problems)) is not None
     )
+    wheels = []
+    for i, raw in enumerate(_list(data.get("wheels"), "wheels", problems)):
+        if (w := _wheel(raw, i, problems)) is not None:
+            wheels.append(w[0])
+            if w[1] is not None:
+                parts = parts + (w[1],)
+    surface = _surface(data.get("surface", "concrete"), problems)
     measured = _measured(data.get("measured"), problems)
     calibration = _calibration(data.get("calibration"), problems)
     current = np.zeros(3)
@@ -283,7 +319,87 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         measured=measured,
         calibration=calibration,
         current=current if current is not None else np.zeros(3),
+        wheels=tuple(wheels),
+        surface=surface,
     )
+
+
+def _surface(raw: object, problems: list[str]) -> tuple[str, float, float]:
+    if isinstance(raw, str) and raw in SURFACES:
+        return (raw, *SURFACES[raw])
+    if isinstance(raw, dict):
+        mu, crr = raw.get("mu"), raw.get("rolling", 0.015)
+        ok = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (mu, crr))
+        if ok and 0 < mu <= 2 and 0 <= crr < 1:
+            return ("custom", float(mu), float(crr))
+    problems.append(
+        f"'surface' must be one of {list(SURFACES)} or {{mu: ..., rolling: ...}}, got {raw!r}"
+    )
+    return ("concrete", *SURFACES["concrete"])
+
+
+def _wheel(raw: object, i: int, problems: list[str]) -> tuple[Wheel, Part | None] | None:
+    label = f"wheels[{i}]"
+    if not isinstance(raw, dict):
+        problems.append(f"{label} must be a mapping with position and radius")
+        return None
+    n_before = len(problems)
+    position = _vector(raw.get("position"), f"{label}.position", problems)
+    radius = _positive(raw.get("radius"), f"{label}.radius", problems)
+
+    def number(key, default, low=0.0):
+        value = raw.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < low:
+            problems.append(f"'{label}.{key}' must be a number >= {low:g}, got {value!r}")
+            return default
+        return float(value)
+
+    def flag(key):
+        value = raw.get(key, False)
+        if not isinstance(value, bool):
+            problems.append(f"'{label}.{key}' must be true or false")
+            return False
+        return value
+
+    driven, steered, caster = flag("driven"), flag("steered"), flag("caster")
+    width = number("width", 0.0)
+    max_steer = np.radians(number("max_steer", 35.0))
+    track = number("track_length", 0.0)
+    mass = number("mass", 0.0)
+    stall = number("stall_torque", 0.0)
+    rpm = number("no_load_rpm", 0.0)
+    if driven and (stall <= 0 or rpm <= 0):
+        problems.append(
+            f"{label} is driven: give stall_torque (N m at the wheel) and no_load_rpm (at the "
+            "wheel, after the gearbox) from the motor datasheet"
+        )
+    if caster and (driven or steered):
+        problems.append(f"{label}: a caster cannot be driven or steered")
+    if len(problems) > n_before or position is None or radius is None:
+        return None
+    wheel = Wheel(
+        name=str(raw.get("name", f"wheel{i}")),
+        position=position,
+        radius=radius,
+        width=width,
+        driven=driven,
+        steered=steered,
+        max_steer=max_steer,
+        caster=caster,
+        stall_torque=stall,
+        no_load_speed=rpm * 2 * np.pi / 60,
+        track_length=track,
+    )
+    part = None
+    if mass > 0:  # a wheel (with its motor) is a heavy part: it sets CG and inertia
+        part = Part(
+            name=wheel.name,
+            mass=mass,
+            position=position,
+            shape="cylinder",
+            dims={"radius": radius, "length": max(width, 0.2 * radius), "axis": "y"},
+        )
+    return wheel, part
 
 
 def _air_density(value: object, problems: list[str]) -> float:

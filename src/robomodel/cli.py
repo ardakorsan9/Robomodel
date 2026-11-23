@@ -126,12 +126,25 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _build(path: str, output: str | None) -> int:
+    from robomodel.ground import GroundError
+
     try:
-        model = build_model(load_vehicle(path))
+        vehicle = load_vehicle(path)
+        if vehicle.category == "ground":
+            from robomodel import ground
+
+            gm = ground.build_ground_model(vehicle)
+            print(ground.report(gm))
+            if output:
+                with open(output, "w", encoding="utf-8") as f:
+                    yaml.safe_dump(ground.to_dict(gm), f, sort_keys=False, allow_unicode=True)
+                print(f"\nsaved: {output}")
+            return 0
+        model = build_model(vehicle)
     except FileNotFoundError:
         print(f"error: file not found: {path}", file=sys.stderr)
         return 1
-    except (VehicleError, GeometryError) as e:
+    except (VehicleError, GeometryError, GroundError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     print(report(model))
@@ -143,14 +156,23 @@ def _build(path: str, output: str | None) -> int:
 
 
 def _matlab(path: str, output: str, speed: float) -> int:
+    from robomodel.ground import GroundError
     from robomodel.matlab_export import write_matlab
 
     try:
-        model = build_model(load_vehicle(path))
+        vehicle = load_vehicle(path)
+        if vehicle.category == "ground":
+            from robomodel.ground import build_ground_model
+            from robomodel.ground_matlab import write_ground_matlab
+
+            for f in write_ground_matlab(build_ground_model(vehicle), output):
+                print(f"wrote {f}")
+            return 0
+        model = build_model(vehicle)
     except FileNotFoundError:
         print(f"error: file not found: {path}", file=sys.stderr)
         return 1
-    except (VehicleError, GeometryError) as e:
+    except (VehicleError, GeometryError, GroundError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     for f in write_matlab(model, output, speed):
@@ -160,7 +182,14 @@ def _matlab(path: str, output: str, speed: float) -> int:
 
 def _load_model(path: str):
     try:
-        return build_model(load_vehicle(path))
+        vehicle = load_vehicle(path)
+        if vehicle.category == "ground":
+            print(
+                "error: this command is not available for ground robots yet; use build or matlab",
+                file=sys.stderr,
+            )
+            return None
+        return build_model(vehicle)
     except FileNotFoundError:
         print(f"error: file not found: {path}", file=sys.stderr)
     except (VehicleError, GeometryError) as e:
@@ -236,6 +265,7 @@ def _check(path: str) -> int:
     print(f"  geometry      {shape}")
     print(f"  parts         {len(vehicle.parts)}")
     print(f"  thrusters     {len(vehicle.thrusters)}")
+    print(f"  wheels        {len(vehicle.wheels)}")
     controls = sum(f.control for f in vehicle.fins)
     print(f"  fins          {len(vehicle.fins)} ({controls} control)")
     m = vehicle.measured
