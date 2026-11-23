@@ -289,3 +289,7 @@ uv run pytest -m heavy   # also the BlueROV2 test (needs its 309 MB CAD, ~4 GB R
 | `src/robomodel/multibody/` | Links, joints, RNEA/CRBA dynamics, robot files, URDF |
 | `validation/` | REMUS 100, BlueROV2 and calibration studies (write the reports in `docs/`) |
 | `docs/eksenler.md`, `docs/plan.md` | Axis conventions, project plan |
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE). Copyright 2026 Arda Onur Kirik.

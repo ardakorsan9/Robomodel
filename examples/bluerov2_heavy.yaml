@@ -3,13 +3,13 @@
 # Table A1. Used by validation/bluerov2.py.
 #
 # The CAD assembly is Blue Robotics' public BROV2-HEAVY-ASM-BROV2-HEAVY-R1.STL (309 MB, not in
-# this repository): download it from bluerobotics.com and put it at the path below.
+# this repository): download it from bluerobotics.com and put it at data/bluerov2/ (gitignored).
 name: bluerov2_heavy
 category: underwater
 mass: 13.5                 # kg (Table A1, experimental)
 water: fresh               # pool, rho = 1000
 geometry:
-  file: data/bluerov2/BROV2-HEAVY-ASM-BROV2-HEAVY-R1.STL
+  file: ../data/bluerov2/BROV2-HEAVY-ASM-BROV2-HEAVY-R1.STL
   unit: mm
   axes: [z, -x, -y]        # file z is forward, file y is up (checked from the CAD views)
   assembly: true           # 1142 parts, open frame

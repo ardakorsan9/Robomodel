@@ -3,6 +3,8 @@ name = "robomodel"
 version = "0.1.0"
 description = "Build mathematical models (Fossen 6-DOF) of robots from CAD and a vehicle description"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [
     { name = "Arda Onur Kirik" }
 ]

@@ -15,3 +15,6 @@ wheels/
 
 # Generated model output
 *_model.yaml
+
+# Large third-party CAD files (download separately, see examples/)
+data/

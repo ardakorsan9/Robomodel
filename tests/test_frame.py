@@ -113,9 +113,7 @@ BLUEROV2 = ROOT / "examples" / "bluerov2_heavy.yaml"
 
 @pytest.mark.heavy
 @pytest.mark.skipif(
-    not Path(
-        "data/bluerov2/BROV2-HEAVY-ASM-BROV2-HEAVY-R1.STL"
-    ).exists(),
+    not (ROOT / "data" / "bluerov2" / "BROV2-HEAVY-ASM-BROV2-HEAVY-R1.STL").exists(),
     reason="BlueROV2 CAD (309 MB, Blue Robotics) not downloaded",
 )
 def test_bluerov2_geometry_matches_paper_and_damping_is_low():
