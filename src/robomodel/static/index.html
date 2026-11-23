@@ -39,6 +39,12 @@
   button:disabled { opacity:.45; cursor:default; }
   .tools { display:flex; gap:6px; flex-wrap:wrap; }
   .hint { color:var(--muted); font-size:12.5px; margin:6px 0; }
+  .types { display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px; }
+  .types button { text-align:left; padding:8px 10px; line-height:1.25; }
+  .types button b { display:block; font-size:13px; }
+  .types button span { color:var(--muted); font-size:11.5px; }
+  .types button.active { background:#eaf2ff; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  .soon { display:inline-block; background:#eef0f3; color:var(--muted); border-radius:8px; padding:0 6px; font-size:10.5px; margin-left:4px; }
   .size { background:#eef7ee; border-radius:7px; padding:6px 9px; font-size:12.5px; margin-top:8px; display:none; }
   .size.bad { background:#fff1f0; }
   details.adv { margin-top:8px; } details.adv summary { cursor:pointer; color:var(--muted); font-size:12.5px; }
@@ -96,7 +102,12 @@
   <div class="intro"><b data-i18n="howTitle"></b>
     <ol><li data-i18n="how1"></li><li data-i18n="how2"></li><li data-i18n="how3"></li></ol>
   </div>
-  <button id="example" style="width:100%;margin-top:8px" data-i18n="example"></button>
+  <section class="step">
+    <h2><span class="num">0</span><span data-i18n="s0"></span></h2>
+    <p class="why" data-i18n="s0why"></p>
+    <div class="types" id="types"></div>
+  </section>
+  <button id="example" style="width:100%;margin-top:10px" data-i18n="example"></button>
 
   <section class="step">
     <h2><span class="num">1</span><span data-i18n="s1"></span></h2>
@@ -177,6 +188,14 @@ const T = {
     howTitle: "Nasıl çalışır?", how1: "CAD dosyanı yükle, ön ve üst yönü kontrol et.",
     how2: "Kütleyi gir; iticileri ve kanatları model üzerine tıklayarak yerleştir.",
     how3: "Modeli oluştur: özet, kontroller ve indirilecek dosyalar hazır.",
+    s0: "Ne tür bir robot?", s0why: "Ortamın fiziği robota göre değişir (su, hava, zemin). Seçime göre doğru modeli kurar ve doğru soruları sorarız.",
+    soon: "yakında",
+    type_underwater: "Sualtı aracı", type_underwater_d: "AUV, ROV, sualtı dronu",
+    type_surface: "Su üstü aracı", type_surface_d: "tekne, USV, katamaran",
+    type_drone: "Hava aracı", type_drone_d: "multikopter drone",
+    type_ground: "Kara robotu", type_ground_d: "tekerlekli, paletli rover",
+    type_arm: "Robot kol", type_arm_d: "sabit tabanlı, eklemli",
+    type_other: "Diğer", type_other_d: "bacaklı, karma robotlar",
     example: "Örnekle dene (REMUS 100)",
     exampleReady: "Örnek hazır: gövde, ağırlık merkezi, 4 kuyruk kanadı ve pervane yüklendi. 'Modeli oluştur'a bas.",
     s1: "CAD dosyası", s1why: "STL ya da STEP. Tek parça kapalı gövde en iyisi; çok parçalı (açık kasalı ROV) da olur.",
@@ -242,6 +261,14 @@ const T = {
     howTitle: "How it works", how1: "Upload your CAD and check which way is forward and up.",
     how2: "Enter the mass; click thrusters and fins onto the model.",
     how3: "Build: summary, checks and files to download.",
+    s0: "What kind of robot?", s0why: "The physics of the surroundings depends on the robot (water, air, ground). Your choice picks the right model and the right questions.",
+    soon: "soon",
+    type_underwater: "Underwater vehicle", type_underwater_d: "AUV, ROV, underwater drone",
+    type_surface: "Surface vessel", type_surface_d: "boat, USV, catamaran",
+    type_drone: "Aerial vehicle", type_drone_d: "multirotor drone",
+    type_ground: "Ground robot", type_ground_d: "wheeled, tracked rover",
+    type_arm: "Robot arm", type_arm_d: "fixed base, jointed",
+    type_other: "Other", type_other_d: "legged, mixed robots",
     example: "Try an example (REMUS 100)",
     exampleReady: "Example ready: hull, centre of gravity, 4 tail fins and the propeller are loaded. Press 'Build model'.",
     s1: "CAD file", s1why: "STL or STEP. A single closed hull is best; a multi-part open-frame ROV works too.",
@@ -315,13 +342,32 @@ const CHECK_TR = {
   "directionally stable": "Seyir hızında kontrolsüz yön kararlılığı",
   "thrusters can push": "İticilerin etki ettiği yönler",
 };
+// Robot types. `ready` = supported now; the others are shown as coming soon.
+const TYPES = [
+  { id: "underwater", ready: true }, { id: "surface", ready: false },
+  { id: "drone", ready: false }, { id: "ground", ready: false },
+  { id: "arm", ready: false }, { id: "other", ready: false },
+];
+let robotType = "underwater";
+function renderTypes() {
+  const box = document.getElementById("types"); box.innerHTML = "";
+  for (const ty of TYPES) {
+    const b = document.createElement("button");
+    b.className = ty.id === robotType ? "active" : "";
+    b.disabled = !ty.ready;
+    b.innerHTML = `<b>${t("type_" + ty.id)}${ty.ready ? "" : `<span class="soon">${t("soon")}</span>`}</b><span>${t("type_" + ty.id + "_d")}</span>`;
+    b.onclick = () => { robotType = ty.id; renderTypes(); };
+    box.append(b);
+  }
+  document.getElementById("example").style.display = robotType === "underwater" ? "block" : "none";
+}
 let lang = localStorage.getItem("robomodel-lang") || ((navigator.language || "").startsWith("tr") ? "tr" : "en");
 const t = (k, vars = {}) => (T[lang][k] ?? T.en[k] ?? k).replace(/\{(\w+)\}/g, (_, v) => vars[v] ?? "");
 function applyLang() {
   document.documentElement.lang = lang;
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll("[data-lang]").forEach((b) => b.classList.toggle("active", b.dataset.lang === lang));
-  setModeHint(); renderItems(); showSize(); if (lastResult) showResult(lastResult, false);
+  renderTypes(); setModeHint(); renderItems(); showSize(); if (lastResult) showResult(lastResult, false);
 }
 document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("click", () => {
   lang = b.dataset.lang; localStorage.setItem("robomodel-lang", lang); applyLang();
@@ -532,7 +578,7 @@ function drawMarks() {
 function num(id) { const v = $(id).value; return v === "" ? null : +v; }
 function spec() {
   const ax = bodyAxes();
-  const s = { name: $("name").value || "vehicle", category: "underwater", mass: num("mass"), water: $("water").value,
+  const s = { name: $("name").value || "vehicle", category: robotType, mass: num("mass"), water: $("water").value,
     speed: num("speed") ?? 1.0,
     geometry: { unit: $("unit").value, axes: ax ? ax.yaml : ["x", "y", "z"], assembly: $("assembly").checked,
                 voxel: num("voxel") ?? 4, hydrodynamics: $("hydro").value, origin: "center" } };
