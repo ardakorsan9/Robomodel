@@ -125,7 +125,31 @@ Rapor şunları söyler:
 MATLAB çıktısında `robomodel_ground_dynamics.m` var: girdi `u = [tahrik komutları; direksiyon
 açıları]`, durum `[x y ψ u v r]`. Doğruluk raporu: `docs/dogrulama_kara.md`.
 
-## 10. Gazebo (ROS 2)
+## 10. Robot kol (eklemli)
+
+Web sayfasında **Robot kol**'u seç.
+
+1. **CAD:** her link için bir dosya seç, birkaçını aynı anda da seçebilirsin. Parçaları
+   montajdan **sıfır pozda ve aynı koordinatlarda** dışa aktar. Fusion 360 ve SolidWorks
+   gövdeleri tek tek dışa aktarırken bunu kendiliğinden yapar. İlk dosya sabit tabandır.
+2. **Kütle:** her linkin motoru ve dişli kutusuyla birlikte tartılmış kütlesini gir.
+3. **Eklemler:** **+ eklem** ile her eklemin dönme ekseninin üstüne tıkla. Sonra şunları seç:
+   tip (dönel, sürekli, kayar, sabit), bağlı olduğu link, hareket eden link, eksen (z yukarı),
+   sınırlar ve motor sınırı.
+
+Sonuçta şunlar var:
+- URDF ve meshler (ROS, Gazebo, MATLAB),
+- kontroller,
+- her motorun kolu yerçekimine karşı tutmak için gereken tork: çizilen pozda ve eklem
+  sınırları içindeki en kötü pozda. Motor seçerken buna ivme ve taşınacak yük için pay ekle.
+
+**MATLAB için toolbox gerekmez:** `robomodel_robot_mass.m` M(q)'yu, `robomodel_robot_bias.m`
+Coriolis + yerçekimi + sürtünmeyi, `robomodel_robot_dynamics.m` ise ẋ = f(x, τ)'yu verir
+(ode45 ya da Simulink'te MATLAB Function bloğu için). `matlab/<ad>_example.m` bunları
+Python'la karşılaştırır: M(q) farkı 4·10⁻¹⁵, 2 s'lik salınım farkı 9·10⁻⁹ rad. Robotics System
+Toolbox varsa `<ad>_check_toolbox.m` aynı kontrolü `importrobot` ile yapar.
+
+## 11. Gazebo (ROS 2)
 
 ```bash
 uv run robomodel gazebo arac.yaml -o gz

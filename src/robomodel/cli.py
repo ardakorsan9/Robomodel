@@ -80,7 +80,14 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(robot_report(r))
         if args.output:
-            print(f"\nwrote {write_urdf(r, args.output)}")
+            from pathlib import Path
+
+            from robomodel.multibody.matlab import write_robot_matlab
+
+            urdf = write_urdf(r, args.output)
+            print(f"\nwrote {urdf}")
+            for f in write_robot_matlab(r, Path(args.output) / "matlab", f"../{urdf.name}"):
+                print(f"wrote {f}")
         return 0
     if args.command == "serve":
         from robomodel.web import serve as run_server

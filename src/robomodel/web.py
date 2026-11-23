@@ -316,6 +316,122 @@ def build(upload_id: str, spec: dict) -> dict:
     return json.loads((out / "result.json").read_text(encoding="utf-8"))
 
 
+def _run_robot_build(folder: str, spec: dict, files: dict, result_id: str) -> None:
+    """Worker process: a jointed robot from per-link CAD files in assembly coordinates."""
+    from robomodel.checks import summary
+    from robomodel.multibody.assembly import (
+        description_from_assembly,
+        holding_torques,
+        robot_from_assembly,
+    )
+    from robomodel.multibody.matlab import write_robot_matlab
+    from robomodel.multibody.report import robot_report, run_robot_checks
+    from robomodel.multibody.urdf import write_urdf
+
+    folder = Path(folder)
+    out = folder / result_id
+    out.mkdir(parents=True, exist_ok=True)
+    files = {k: Path(v) for k, v in files.items()}
+    try:
+        try:
+            robot = robot_from_assembly(spec, files)
+        except (VehicleError, GeometryError, ValueError) as e:
+            (out / "error.json").write_text(json.dumps({"status": 422, "detail": str(e)}))
+            return
+        shown = description_from_assembly(spec, files)
+        for lk in shown["links"]:
+            lk["geometry"]["file"] = (
+                Path(lk["geometry"]["file"]).parent.joinpath("name.txt").read_text(encoding="utf-8")
+            )
+        (out / "robot.yaml").write_text(yaml.safe_dump(shown, sort_keys=False), encoding="utf-8")
+        name = robot.name
+        urdf = write_urdf(robot, out / "urdf", name)
+        write_robot_matlab(robot, out / "matlab", f"../urdf/{urdf.name}")
+        checks = run_robot_checks(robot)
+        hold = holding_torques(robot)
+        text = robot_report(robot)
+        if hold:
+            text += "\n\nHolding torque against gravity (N m; N for sliders):\n" + "\n".join(
+                f"  {k:<14} zero pose {v['zero_pose']:+.4g}, worst pose {v['worst']:.4g}"
+                + (f", effort limit {v['effort']:.4g}" if v["effort"] is not None else "")
+                for k, v in hold.items()
+            )
+        (out / "report.txt").write_text(text + "\n", encoding="utf-8")
+        with zipfile.ZipFile(folder / f"{result_id}.zip", "w", zipfile.ZIP_DEFLATED) as z:
+            for p in sorted(out.rglob("*")):
+                if p.is_file() and p.name != "result.json":
+                    z.write(p, Path(name) / p.relative_to(out))
+        zero = np.zeros(robot.n)
+        result = {
+            "result": result_id,
+            "report": text,
+            "checks": [{"name": c.name, "status": c.status, "detail": c.detail} for c in checks],
+            "checks_text": summary(checks),
+            "warnings": [],
+            "summary": {
+                "category": "multibody",
+                "dof": robot.dof_names,
+                "mass": float(sum(lk.mass for lk in robot.links.values())),
+                "links": [
+                    {
+                        "name": lk.name,
+                        "mass": lk.mass,
+                        "com": np.asarray(lk.com).tolist(),
+                        "inertia_diag": np.diag(lk.inertia).tolist(),
+                    }
+                    for lk in robot.links.values()
+                ],
+                "mass_matrix_zero": robot.mass_matrix(zero).tolist(),
+            },
+            "holding": hold,
+        }
+        (out / "result.json").write_text(json.dumps(result, default=float), encoding="utf-8")
+    except Exception as e:  # anything unexpected: tell the user, keep the server alive
+        (out / "error.json").write_text(
+            json.dumps({"status": 500, "detail": f"robot building failed: {type(e).__name__}: {e}"})
+        )
+
+
+@app.post("/api/robot/build")
+def build_robot(spec: dict) -> dict:
+    """spec: {name, root?, links: [{name, upload, mass, unit, axes}], joints: [...]}, each link
+    its own upload (CAD in assembly coordinates). The result is stored with the first link."""
+    links = spec.get("links") or []
+    if not links:
+        raise HTTPException(422, "add at least one link (one CAD file per moving part)")
+    files = {}
+    for lk in links:
+        folder = _upload_dir(str(lk.get("upload", "")))
+        source = next((p for p in folder.iterdir() if p.stem == "cad"), None)
+        if source is None:
+            raise HTTPException(404, f"the CAD of link {lk.get('name')} is missing")
+        files[str(lk["upload"])] = str(source)
+        lk["file"] = str(lk["upload"])
+    first = _upload_dir(str(links[0]["upload"]))
+    if not JOBS.acquire(blocking=False):
+        raise HTTPException(503, "the server is busy building other models; try again shortly")
+    try:
+        result_id = uuid.uuid4().hex
+        job = multiprocessing.get_context("spawn").Process(
+            target=_run_robot_build, args=(str(first), dict(spec), files, result_id), daemon=True
+        )
+        job.start()
+        job.join(BUILD_TIMEOUT_S)
+        if job.is_alive():
+            job.terminate()
+            job.join(5)
+            raise HTTPException(504, f"building took longer than {BUILD_TIMEOUT_S} s")
+    finally:
+        JOBS.release()
+    out = first / result_id
+    if (out / "error.json").exists():
+        err = json.loads((out / "error.json").read_text())
+        raise HTTPException(err["status"], err["detail"])
+    if not (out / "result.json").exists():
+        raise HTTPException(500, "robot building stopped unexpectedly (out of memory?)")
+    return json.loads((out / "result.json").read_text(encoding="utf-8"))
+
+
 @app.delete("/api/upload/{upload_id}")
 def delete_upload(upload_id: str) -> dict:
     """Delete the CAD and every result made from it, now."""

@@ -10,7 +10,8 @@ M ν̇ + C(ν) ν + D(ν) ν + g(η) = τ,   M = M_RB + M_A
 with MATLAB, Simulink and Gazebo files, automatic sanity checks, and an honest statement of how
 far each number can be trusted. Supported: underwater vehicles (torpedo AUVs and open-frame
 ROVs), surface vessels (boats, USVs), multirotor drones and wheeled / tracked ground robots.
-Jointed robots (arms, legs) have a multibody core on the command line.
+Jointed robots (arms) on the web page and the command line; legged robots on the
+command line.
 
 Türkçe kılavuz: [docs/KILAVUZ.md](docs/KILAVUZ.md)
 
@@ -201,6 +202,19 @@ joints:
 robomodel robot arm2.yaml -o out    # report, checks, URDF + meshes (ROS, Gazebo, MATLAB)
 ```
 
+**On the web page** (type *Robot arm*): choose one CAD file per link, each exported from the
+assembly at its zero pose in the same coordinates (that is the default when you export parts
+of an assembly). Enter each link's mass, click the joints onto the model (axis, parent, child,
+limits, motor limit) and build. You get the URDF with meshes, the report, the checks and the
+**torque each motor needs to hold the arm against gravity**, at the drawn pose and at the worst
+pose inside the joint limits, compared with the motor limits.
+
+MATLAB without any toolbox: `robomodel_robot_mass.m` (M(q), composite rigid body algorithm),
+`robomodel_robot_bias.m` (Coriolis + gravity + friction, recursive Newton-Euler) and
+`robomodel_robot_dynamics.m` (ẋ = f(x, τ) for ode45 / Simulink); verified against Python: M(q)
+4·10⁻¹⁵, g(q) 3·10⁻¹⁴, a 2 s free swing 9·10⁻⁹ rad. With the Robotics System Toolbox,
+`<name>_check_toolbox.m` loads the URDF with `importrobot` and compares the same numbers.
+
 Validated: pendulum period (0.1 %), analytic 2-link mass matrix (exact), energy of a chaotic
 double pendulum (10⁻⁶), free fall of a floating base, and a damped two-link swing in Gazebo
 from the exported URDF (elbow within 0.3–7 mm over 5 s). Joint friction, motors, wheel and
@@ -244,7 +258,8 @@ simulation), self-righting, neutral buoyancy, stability at rest and at cruise sp
 - Surface vessels: yaw-rate derivatives are weak (turns too fast), no waves, no Gazebo export.
 - Drones: drag and torque ratio are estimates; no thrust loss with airspeed; no Gazebo export.
 - Ground robots: planar, flat ground, static wheel loads; grip is an estimate.
-- Arms and legged robots on the web page: not yet (command line `robomodel robot` works).
+- Jointed robots: inertia assumes uniform density per link; joint friction, motors and foot
+  contacts are not modelled; legged robots and floating bases only on the command line.
 
 ## Tests
 

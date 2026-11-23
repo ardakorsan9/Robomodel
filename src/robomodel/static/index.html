@@ -48,6 +48,11 @@
   body:not(.air) .aironly { display:none !important; }
   body.ground .wateronly { display:none !important; }
   body:not(.ground) .groundonly { display:none !important; }
+  body.arm .notarm, body.arm .wateronly { display:none !important; }
+  body:not(.arm) .armonly { display:none !important; }
+  .linkrow { display:grid; grid-template-columns: 14px 1fr 90px 28px; gap:6px; align-items:center; margin:4px 0; }
+  .swatch { width:12px; height:12px; border-radius:3px; }
+  table.hold td.bad { color:#b3261e; font-weight:600; }
   .soon { display:inline-block; background:#eef0f3; color:var(--muted); border-radius:8px; padding:0 6px; font-size:10.5px; margin-left:4px; }
   .size { background:#eef7ee; border-radius:7px; padding:6px 9px; font-size:12.5px; margin-top:8px; display:none; }
   .size.bad { background:#fff1f0; }
@@ -117,6 +122,7 @@
     <h2><span class="num">1</span><span data-i18n="s1"></span></h2>
     <p class="why" data-i18n="s1why"></p>
     <input type="file" id="cad" accept=".stl,.step,.stp,.obj,.ply">
+    <p class="hint armonly" data-i18n="armFiles"></p>
     <div class="size" id="sizeinfo"></div>
     <div class="row">
       <div><label><span data-i18n="units"></span></label>
@@ -131,7 +137,7 @@
       <div><label data-i18n="fwd"></label><select id="fwd"></select></div>
       <div><label data-i18n="up"></label><select id="up"></select></div>
     </div>
-    <details class="adv"><summary data-i18n="advanced"></summary>
+    <details class="adv notarm"><summary data-i18n="advanced"></summary>
       <label><input type="checkbox" id="assembly" style="width:auto"> <span data-i18n="assembly"></span></label>
       <div class="row">
         <div><label data-i18n="voxel"></label><input id="voxel" type="number" value="4" min="0.5" step="0.5"></div>
@@ -146,10 +152,11 @@
     <p class="why" data-i18n="s2why"></p>
     <div class="row">
       <div><label data-i18n="name"></label><input id="name" value="my_vehicle"></div>
-      <div><label><span data-i18n="mass"></span> <small>kg</small></label><input id="mass" type="number" step="0.01"></div>
+      <div class="notarm"><label><span data-i18n="mass"></span> <small>kg</small></label><input id="mass" type="number" step="0.01"></div>
     </div>
-    <label><span data-i18n="speed"></span> <small>m/s</small></label><input id="speed" type="number" value="1.0" step="0.1">
-    <details class="adv"><summary data-i18n="measuredTitle"></summary>
+    <div class="notarm"><label><span data-i18n="speed"></span> <small>m/s</small></label><input id="speed" type="number" value="1.0" step="0.1"></div>
+    <div class="armonly"><p class="hint" data-i18n="linksWhy"></p><div id="links"></div></div>
+    <details class="adv notarm"><summary data-i18n="measuredTitle"></summary>
       <div class="wateronly"><label><span data-i18n="mvol"></span> <small>m³</small></label><input id="mvol" type="number" step="0.0001"></div>
       <label><span data-i18n="cg"></span> <small>m</small></label>
       <div class="row3"><input id="cgx" type="number" step="0.001" placeholder="x"><input id="cgy" type="number" step="0.001" placeholder="y"><input id="cgz" type="number" step="0.001" placeholder="z"></div>
@@ -164,7 +171,8 @@
       <button data-mode="fin" class="wateronly" data-i18n="addFin"></button>
       <button data-mode="rotor" class="aironly" data-i18n="addRotor"></button>
       <button data-mode="wheel" class="groundonly" data-i18n="addWheel"></button>
-      <button data-mode="part" data-i18n="addPart"></button>
+      <button data-mode="part" class="notarm" data-i18n="addPart"></button>
+      <button data-mode="joint" class="armonly" data-i18n="addJoint"></button>
     </div>
     <div class="hint" id="modehint"></div>
     <div id="items"></div>
@@ -219,6 +227,18 @@ const T = {
     s3: "İticiler, kanatlar, ağır parçalar", s3why: "Bir araç seç, sonra 3B modelin üzerinde yerine tıkla. Konumlar metre, gövde ekseninde (x ileri, y sağ, z aşağı).",
     addThruster: "+ itici", addFin: "+ kanat / dümen",
     addWheel: "+ tekerlek / palet",
+    addJoint: "+ eklem", joint: "eklemin (ekseninin üstüne)", jointType: "tip", parentLbl: "bağlı olduğu link", childLbl: "hareket eden link", axisLbl: "eksen (z = yukarı)", effortLbl: "motor sınırı (N m)",
+    lowerDeg: "alt sınır (°)", upperDeg: "üst sınır (°)", lowerM: "alt sınır (m)", upperM: "üst sınır (m)",
+    armFiles: "Robot kol: her link için bir dosya seç (birden fazlasını aynı anda seçebilirsin). Her parçayı montajdan, sıfır pozda ve aynı koordinatlarda dışa aktar.",
+    linksWhy: "Her linkin kütlesi (motoruyla birlikte tartılmış). İlk link sabit tabandır.",
+    rootLink: "sabit taban", rootIs: "Sabit taban: {n}", linkLoaded: "{f} yüklendi ({n} link).", needLinkMass: "Önce her linkin kütlesini gir.",
+    dofK: "Serbestlik derecesi", massK: "Toplam kütle", holdK: "Motor tutma torku", holdOk: "verilen motor sınırlarının içinde", holdOver: "motor sınırını aşıyor: {j}",
+    holdTitle: "Yerçekimine karşı tork (N m)", jointCol: "eklem", zeroCol: "çizilen poz", worstCol: "en kötü poz", effortCol: "sınır",
+    holdWhy: "Her motorun kolu sadece hareketsiz tutmak için gereken torku: çizilen pozda ve eklem sınırları içindeki en kötü pozda. İvme ve yük için pay ekle.",
+    tArmMass: "Her linki motoru ve dişli kutusuyla birlikte tart: atalet ve tutma torkları buna bağlı.",
+    tArmFric: "Eklem sürtünmesi ve motor/dişli verisi CAD'de yok: ölç ya da simülasyonda ayarla.",
+    downloadA: "⬇ Modeli indir (ROS/Gazebo/MATLAB için URDF, rapor, MATLAB kontrolü)",
+    linkCol: "link", comCol: "kütle merkezi (m)",
     wheel: "tekerleğin (göbeğine tıkla)", radiusCm: "yarıçap (cm)", widthCm: "genişlik (cm)", wheelG: "tekerlek + motor kütlesi (g)",
     drivenLbl: "tahrikli", steeredLbl: "yönlendirmeli", casterLbl: "sarhoş teker",
     stallLbl: "tekerlekte durma torku (N m)", rpmLbl: "tekerlekte yüksüz hız (rpm)",
@@ -315,7 +335,19 @@ const T = {
     measuredTitle: "I have measured values (optional)", mvol: "Volume (weighing in water)",
     cg: "Centre of gravity x, y, z (body frame)",
     s3: "Thrusters, fins, heavy parts", s3why: "Pick a tool, then click on the 3D model where it sits. Positions in metres, body frame (x forward, y right, z down).",
-    addThruster: "+ thruster", addFin: "+ fin / rudder", addRotor: "+ rotor", addWheel: "+ wheel / track",
+    addThruster: "+ thruster", addFin: "+ fin / rudder", addRotor: "+ rotor", addWheel: "+ wheel / track", addJoint: "+ joint",
+    joint: "joint (on its axis)", jointType: "type", parentLbl: "parent link", childLbl: "child link (moves)", axisLbl: "axis (z = up)", effortLbl: "motor limit (N m)",
+    lowerDeg: "lower limit (deg)", upperDeg: "upper limit (deg)", lowerM: "lower limit (m)", upperM: "upper limit (m)",
+    armFiles: "Robot arm: choose one file per link (you can select several at once). Export every part from the assembly in its zero pose, in the same coordinates.",
+    linksWhy: "Each link's mass (weighed, with its motor). The first link is the fixed base.",
+    rootLink: "fixed base", rootIs: "Fixed base: {n}", linkLoaded: "{f} loaded ({n} links).", needLinkMass: "Enter the mass of every link first.",
+    dofK: "Degrees of freedom", massK: "Total mass", holdK: "Motor holding torque", holdOk: "within every given motor limit", holdOver: "more than the motor limit at: {j}",
+    holdTitle: "Torque against gravity (N m)", jointCol: "joint", zeroCol: "zero pose", worstCol: "worst pose", effortCol: "limit",
+    holdWhy: "The torque each motor needs just to hold the arm still, at the drawn pose and at the worst pose inside the joint limits. Add margin for acceleration and payload.",
+    tArmMass: "Weigh each link with its motor and gearbox: inertia and holding torques depend on it.",
+    tArmFric: "Joint friction and motor/gearbox data are not in the CAD: measure them or tune in simulation.",
+    downloadA: "⬇ Download model (URDF for ROS/Gazebo/MATLAB, report, MATLAB check)",
+    linkCol: "link", comCol: "centre of mass (m)",
     wheel: "wheel (click its hub)", radiusCm: "radius (cm)", widthCm: "width (cm)", wheelG: "wheel + motor mass (g)",
     drivenLbl: "driven", steeredLbl: "steered", casterLbl: "caster (swivels)",
     stallLbl: "stall torque at the wheel (N m)", rpmLbl: "no-load speed at the wheel (rpm)",
@@ -404,6 +436,10 @@ const CHECK_TR = {
   "has driven wheels": "Tahrikli tekerlek var",
   "can turn": "Dönebiliyor (yönlendirme ya da iki yanda tahrik)",
   "coasting loses energy": "Serbest yuvarlanmada enerji azalıyor (simülasyon)",
+  "mass matrix M(q)": "Kütle matrisi M(q) simetrik ve pozitif tanımlı (20 rastgele poz)",
+  "inverse and forward dynamics agree": "Ters ve ileri dinamik tutarlı",
+  "energy conserved without friction": "Sürtünmesiz durumda enerji korunuyor (2 s simülasyon)",
+  "every link has a real mass": "Her linkin gerçek bir kütlesi var",
   "thrust-to-weight": "İtki/ağırlık en az 1,5",
   "rotors control thrust": "Rotorlar itki, yatış, yunuslama ve dönüşü kontrol ediyor",
   "stable in pitch": "Baş-kıç yönünde dengeli (GM_L > 0)",
@@ -415,7 +451,7 @@ const CHECK_TR = {
 const TYPES = [
   { id: "underwater", ready: true }, { id: "surface", ready: true },
   { id: "drone", ready: true }, { id: "ground", ready: true },
-  { id: "arm", ready: false }, { id: "other", ready: false },
+  { id: "arm", ready: true }, { id: "other", ready: false },
 ];
 let robotType = "underwater";
 const CATEGORY = { underwater: "underwater", surface: "surface", drone: "aerial", ground: "ground" };
@@ -432,6 +468,9 @@ function renderTypes() {
   document.getElementById("example").style.display = robotType === "underwater" ? "block" : "none";
   document.body.classList.toggle("air", robotType === "drone");
   document.body.classList.toggle("ground", robotType === "ground");
+  document.body.classList.toggle("arm", robotType === "arm");
+  $("cad").multiple = robotType === "arm";
+  if (robotType === "arm" && mode && mode !== "joint") mode = null;
   if ((robotType === "drone" || robotType === "ground") && (mode === "thruster" || mode === "fin")) mode = null;
 }
 let lang = localStorage.getItem("robomodel-lang") || ((navigator.language || "").startsWith("tr") ? "tr" : "en");
@@ -492,7 +531,7 @@ function applyTransform() {
     ax.y.x * s, ax.y.y * s, ax.y.z * s, 0,
     ax.z.x * s, ax.z.y * s, ax.z.z * s, 0, 0, 0, 0, 1);
   root.matrixAutoUpdate = false; root.matrix.copy(m); root.updateMatrixWorld(true);
-  if (!cadMesh) return;
+  if (!root.children.length) return;
   const box = new THREE.Box3().setFromObject(root); const c = box.getCenter(new THREE.Vector3());
   size = box.getSize(new THREE.Vector3()).length();
   if (axesHelper) scene.remove(axesHelper);
@@ -522,6 +561,7 @@ for (const id of ["fwd", "up", "unit"]) $(id).addEventListener("change", () => {
 // ---------- upload, example, preview, delete ----------
 let uploadId = null;
 $("cad").addEventListener("change", async (e) => {
+  if (robotType === "arm") { for (const f of e.target.files) await addArmLink(f); e.target.value = ""; return; }
   const file = e.target.files[0]; if (!file) return;
   const ext = file.name.split(".").pop().toLowerCase();
   if (["step", "stp"].includes(ext)) $("unit").value = "m";  // STEP comes in metres
@@ -549,7 +589,10 @@ $("example").addEventListener("click", async () => {
   status(t("exampleReady"));
 });
 $("deletefiles").addEventListener("click", async (e) => {
-  e.preventDefault(); if (!uploadId) return;
+  e.preventDefault();
+  for (const lk of armLinks.splice(0)) await fetch(`/api/upload/${lk.upload}`, { method: "DELETE" });
+  renderLinks();
+  if (!uploadId) { root.clear(); $("deletefiles").style.display = "none"; status(t("deleted")); return; }
   await fetch(`/api/upload/${uploadId}`, { method: "DELETE" });
   uploadId = null; root.clear(); cadMesh = null; fileExtents = null; showSize();
   $("build").disabled = true; $("result").style.display = "none"; $("empty").style.display = "grid";
@@ -572,6 +615,92 @@ async function loadPreview(fileName) {
   status(t("loaded", { f: fileName, n: info.faces.toLocaleString(), c: info.watertight ? t("closed") : t("open") }));
 }
 
+// ---------- robot arm: one CAD file per link, in assembly coordinates ----------
+const armLinks = [];
+const PALETTE = [0xc9ced6, 0x8fb3e0, 0xe0b48f, 0x9fd49a, 0xd99ad4, 0xe0d98f, 0x8fd9d4];
+async function addArmLink(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (["step", "stp"].includes(ext)) $("unit").value = "m";
+  status(t("uploading", { f: file.name, mb: (file.size / 2**20).toFixed(1) }));
+  const form = new FormData(); form.append("file", file);
+  const up = await fetch("/api/upload", { method: "POST", body: form });
+  if (!up.ok) return status(await errorText(up), true);
+  const id = (await up.json()).id;
+  const res = await fetch(`/api/preview/${id}`);
+  if (!res.ok) return status(await errorText(res), true);
+  const geom = new STLLoader().parse(await res.arrayBuffer()); geom.computeVertexNormals();
+  const color = PALETTE[armLinks.length % PALETTE.length];
+  const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color, metalness: 0.1, roughness: 0.7, side: THREE.DoubleSide }));
+  root.add(mesh); $("empty").style.display = "none";
+  const name = file.name.replace(/\.[^.]+$/, "").replace(/\W+/g, "_") || `link${armLinks.length}`;
+  armLinks.push({ name, upload: id, mass: "", mesh, color });
+  applyTransform(); renderLinks(); renderItems();
+  $("build").disabled = false; $("deletefiles").style.display = "inline";
+  status(t("linkLoaded", { f: file.name, n: armLinks.length }));
+}
+function renderLinks() {
+  const box = $("links"); box.innerHTML = "";
+  armLinks.forEach((lk, i) => {
+    const row = document.createElement("div"); row.className = "linkrow";
+    const sw = document.createElement("span"); sw.className = "swatch"; sw.style.background = "#" + lk.color.toString(16).padStart(6, "0");
+    const nm = document.createElement("input"); nm.value = lk.name; nm.title = i === 0 ? t("rootLink") : "";
+    nm.onchange = () => { const old = lk.name; lk.name = nm.value.replace(/\W+/g, "_");
+      for (const j of items) { if (j.parent === old) j.parent = lk.name; if (j.child === old) j.child = lk.name; } renderItems(); };
+    const ms = document.createElement("input"); ms.type = "number"; ms.step = "any"; ms.placeholder = "kg"; ms.value = lk.mass;
+    ms.onchange = () => { lk.mass = ms.value === "" ? "" : +ms.value; };
+    const rm = document.createElement("button"); rm.textContent = "×";
+    rm.onclick = async () => { armLinks.splice(i, 1); root.remove(lk.mesh); await fetch(`/api/upload/${lk.upload}`, { method: "DELETE" }); renderLinks(); renderItems(); };
+    row.append(sw, nm, ms, rm); box.append(row);
+  });
+  if (armLinks.length) { const h = document.createElement("p"); h.className = "hint"; h.textContent = t("rootIs", { n: armLinks[0].name }); box.append(h); }
+}
+const negAxis = (a) => (a.startsWith("-") ? a.slice(1) : "-" + a);
+const toUp = (p) => [p[0], -p[1], -p[2]];  // scene (x fwd, y right, z down) -> robot (x fwd, y left, z up)
+function armSpec() {
+  const ax = bodyAxes();
+  const axes = ax ? [ax.yaml[0], negAxis(ax.yaml[1]), negAxis(ax.yaml[2])] : ["x", "y", "z"];
+  const links = armLinks.map((lk) => ({ name: lk.name, upload: lk.upload, mass: lk.mass === "" ? null : lk.mass, unit: $("unit").value, axes }));
+  const joints = items.filter((i) => i.kind === "joint").map((j) => {
+    const lin = j.type === "prismatic", k = lin ? 1 : Math.PI / 180;
+    const o = { name: j.name, type: j.type, parent: j.parent, child: j.child, position: toUp(j.position), axis: vecFrom(j.axis) };
+    if (j.type !== "continuous" && j.type !== "fixed") { o.lower = j.lower * k; o.upper = j.upper * k; }
+    if (j.effort !== "") o.effort = j.effort;
+    return o;
+  });
+  return { name: $("name").value || "robot", links, joints };
+}
+function showArmResult(r, open) {
+  const sm = r.summary, box = $("result"), hold = r.holding || {};
+  const fails = r.checks.filter((c) => c.status === "fail").length;
+  const over = Object.entries(hold).filter(([, v]) => v.effort !== null && v.worst > v.effort).map(([k]) => k);
+  const cards = [
+    card(fails ? "fail" : "ok", t("validK"), fails ? t("validNo") : t("validOk")),
+    card("", t("dofK"), `${sm.dof.length}: ${sm.dof.join(", ")}`),
+    card("", t("massK"), `${n(sm.mass, 4)} kg`),
+    Object.keys(hold).length ? card(over.length ? "warn" : "ok", t("holdK"), over.length ? t("holdOver", { j: over.join(", ") }) : t("holdOk")) : "",
+  ].join("");
+  box.innerHTML = `
+    <button class="close" title="close">×</button>
+    <h3>${esc(t("resTitle", { name: armSpec().name }))}</h3>
+    <a class="dl" href="/api/download/${armLinks[0].upload}/${r.result}"><button class="primary">${t("downloadA")}</button></a>
+    <h4>${t("summary")}</h4><div class="cards">${cards}</div>
+    ${Object.keys(hold).length ? `<h4>${t("holdTitle")}</h4><table class="hold"><tr><th>${t("jointCol")}</th><th>${t("zeroCol")}</th><th>${t("worstCol")}</th><th>${t("effortCol")}</th></tr>
+      ${Object.entries(hold).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${n(v.zero_pose)}</td><td class="${v.effort !== null && v.worst > v.effort ? "bad" : ""}">${n(v.worst)}</td><td>${v.effort === null ? "–" : n(v.effort)}</td></tr>`).join("")}</table>
+      <p class="hint">${t("holdWhy")}</p>` : ""}
+    <h4>${t("todo")}</h4><ol class="todo"><li>${t("tArmMass")}</li><li>${t("tArmFric")}</li></ol>
+    <h4>${t("checks")}</h4>
+    ${r.checks.map((c) => `<div class="check"><span class="badge ${c.status}">${c.status}</span>${esc(checkName(c))} <span class="src">${esc(c.detail)}</span></div>`).join("")}
+    <h4>${t("details")}</h4>
+    <p class="eq">M(q) q̈ + C(q, q̇) q̇ + g(q) = τ</p>
+    <table><tr><th>${t("linkCol")}</th><th>kg</th><th>${t("comCol")}</th><th>Ixx, Iyy, Izz</th></tr>
+      ${sm.links.map((lk) => `<tr><td>${esc(lk.name)}</td><td>${n(lk.mass)}</td><td>[${lk.com.map((x) => n(x)).join(", ")}]</td><td>${lk.inertia_diag.map((x) => n(x)).join(", ")}</td></tr>`).join("")}</table>
+    <details><summary>${t("fullReport")}</summary><pre>${esc(r.report)}</pre></details>`;
+  if (open) box.style.display = "block";
+  box.querySelector(".close").onclick = () => { box.style.display = "none"; };
+  $("showresult").style.display = "block";
+  $("showresult").onclick = () => { box.style.display = "block"; };
+}
+
 // ---------- placing thrusters, fins, parts ----------
 let mode = null; const items = [];
 function setModeHint() { $("modehint").textContent = mode ? t("clickTo", { what: t(mode) }) : t("pick"); }
@@ -583,17 +712,22 @@ document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("clic
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let downAt = null;
 canvas.addEventListener("pointerdown", (e) => downAt = [e.clientX, e.clientY]);
 canvas.addEventListener("pointerup", (e) => {
-  if (!mode || !cadMesh || !downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
+  const pickables = robotType === "arm" ? armLinks.map((lk) => lk.mesh) : (cadMesh ? [cadMesh] : []);
+  if (!mode || !pickables.length || !downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
   const r = canvas.getBoundingClientRect();
   mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(mouse, camera);
-  const hit = ray.intersectObject(cadMesh)[0]; if (!hit) return;
+  const hit = ray.intersectObjects(pickables)[0]; if (!hit) return;
   const pos = [hit.point.x, hit.point.y, hit.point.z].map((v) => +v.toFixed(4));
   const n = items.filter((i) => i.kind === mode).length;
   if (mode === "thruster") items.push({ kind: "thruster", name: `thruster${n}`, position: pos, direction: "+x", model: "T200", max_forward: "", max_reverse: "" });
   if (mode === "fin") items.push({ kind: "fin", name: `fin${n}`, position: pos, normal: "+y", area_cm2: 66, span_cm: 8.5, control: true });
   if (mode === "rotor") items.push({ kind: "rotor", name: `rotor${n}`, position: pos, spin: n % 2 ? "cw" : "ccw", max_thrust: "", diameter_in: 10, motor_g: "" });
   if (mode === "wheel") items.push({ kind: "wheel", name: `wheel${n}`, position: pos, radius_cm: 5, width_cm: 3, driven: true, steered: false, caster: false, stall: "", rpm: "", mass_g: "" });
+  if (mode === "joint") {
+    const names = armLinks.map((lk) => lk.name);
+    items.push({ kind: "joint", name: `joint${n}`, position: pos, type: "revolute", axis: "+z", parent: names[Math.min(n, names.length - 2)] || names[0] || "", child: names[n + 1] || "", lower: -180, upper: 180, effort: "" });
+  }
   if (mode === "part") items.push({ kind: "part", name: `part${n}`, position: pos, mass: 1.0 });
   renderItems(); drawMarks();
 });
@@ -621,7 +755,7 @@ function renderItems() {
   items.forEach((it, idx) => {
     const d = document.createElement("div"); d.className = "item";
     const head = document.createElement("header");
-    const toolKey = { thruster: "addThruster", fin: "addFin", rotor: "addRotor", wheel: "addWheel", part: "addPart" }[it.kind];
+    const toolKey = { thruster: "addThruster", fin: "addFin", rotor: "addRotor", wheel: "addWheel", joint: "addJoint", part: "addPart" }[it.kind];
     const title = document.createElement("span"); title.textContent = `${t(toolKey).replace("+ ", "")}: ${it.name}`;
     const rm = document.createElement("button"); rm.textContent = t("remove");
     rm.onclick = () => { items.splice(idx, 1); renderItems(); drawMarks(); };
@@ -632,6 +766,16 @@ function renderItems() {
       const r2 = document.createElement("div"); r2.className = "row";
       r2.append(field(it, "max_forward", "fwdN"), field(it, "max_reverse", "revN"));
       d.append(r, r2);
+    } else if (it.kind === "joint") {
+      const names = armLinks.map((lk) => lk.name);
+      const r = document.createElement("div"); r.className = "row3";
+      r.append(field(it, "type", "jointType", "text", ["revolute", "continuous", "prismatic", "fixed"]),
+        field(it, "parent", "parentLbl", "text", names), field(it, "child", "childLbl", "text", names));
+      const r2 = document.createElement("div"); r2.className = "row";
+      r2.append(field(it, "axis", "axisLbl", "text", AXES), field(it, "effort", "effortLbl"));
+      const r3 = document.createElement("div"); r3.className = "row";
+      r3.append(field(it, "lower", it.type === "prismatic" ? "lowerM" : "lowerDeg"), field(it, "upper", it.type === "prismatic" ? "upperM" : "upperDeg"));
+      d.append(r, r2, r3);
     } else if (it.kind === "wheel") {
       const r = document.createElement("div"); r.className = "row3";
       r.append(field(it, "radius_cm", "radiusCm"), field(it, "width_cm", "widthCm"), field(it, "mass_g", "wheelG"));
@@ -660,6 +804,12 @@ function drawMarks() {
     const p = new THREE.Vector3(...it.position);
     if (it.kind === "thruster") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.direction)), p, s * 0.18, 0xff7a00, s * 0.05, s * 0.03));
     if (it.kind === "fin") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.normal)), p, s * 0.12, 0x8a2be2, s * 0.04, s * 0.025));
+    if (it.kind === "joint") {
+      const a = vecFrom(it.axis), dir = new THREE.Vector3(a[0], -a[1], -a[2]);  // robot z up -> scene z down
+      marks.add(new THREE.ArrowHelper(dir, p, s * 0.15, 0xd81b60, s * 0.04, s * 0.025));
+      marks.add(new THREE.ArrowHelper(dir.clone().negate(), p, s * 0.15, 0xd81b60, 0.0001, 0.0001));
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(s * 0.012), new THREE.MeshBasicMaterial({ color: 0xd81b60 })); ball.position.copy(p); marks.add(ball);
+    }
     if (it.kind === "wheel") {
       const r = Math.max(+it.radius_cm || 5, 0.1) / 100, w = Math.max(+it.width_cm || 3, 0.1) / 100;
       const wheel = new THREE.Mesh(new THREE.CylinderGeometry(r, r, w, 32), new THREE.MeshBasicMaterial({ color: it.driven ? 0x2e7d32 : 0x777777, transparent: true, opacity: 0.6 }));
@@ -721,6 +871,15 @@ function spec() {
 }
 let lastResult = null;
 $("build").addEventListener("click", async () => {
+  if (robotType === "arm") {
+    const sp = armSpec();
+    if (sp.links.some((lk) => !lk.mass)) return status(t("needLinkMass"), true);
+    $("build").disabled = true; status(t("building"));
+    const res = await fetch("/api/robot/build", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sp) });
+    $("build").disabled = false;
+    if (!res.ok) return status(await errorText(res), true);
+    lastResult = await res.json(); status(t("done")); showArmResult(lastResult, true); return;
+  }
   if (!num("mass")) return status(t("needMass"), true);
   $("build").disabled = true; status(t("building"));
   const res = await fetch(`/api/build/${uploadId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(spec()) });
