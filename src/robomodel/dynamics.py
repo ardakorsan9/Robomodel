@@ -214,6 +214,7 @@ def simulate(
         return state_derivative(dyn, x, tau_t, m_inv)
 
     t_eval = np.arange(0.0, t_end + dt_out / 2, dt_out)
+    t_eval = t_eval[t_eval <= t_end]  # round-off: an odd dt_out must not step past t_end
     sol = solve_ivp(rhs, (0.0, t_end), state0, method="RK45", t_eval=t_eval, rtol=rtol, atol=atol)
     if not sol.success:
         raise RuntimeError(f"simulation failed: {sol.message}")
