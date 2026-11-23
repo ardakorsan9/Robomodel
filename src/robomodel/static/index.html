@@ -177,7 +177,8 @@ const T = {
     howTitle: "Nasıl çalışır?", how1: "CAD dosyanı yükle, ön ve üst yönü kontrol et.",
     how2: "Kütleyi gir; iticileri ve kanatları model üzerine tıklayarak yerleştir.",
     how3: "Modeli oluştur: özet, kontroller ve indirilecek dosyalar hazır.",
-    example: "Örnekle dene (REMUS 100 gövdesi)",
+    example: "Örnekle dene (REMUS 100)",
+    exampleReady: "Örnek hazır: gövde, ağırlık merkezi, 4 kuyruk kanadı ve pervane yüklendi. 'Modeli oluştur'a bas.",
     s1: "CAD dosyası", s1why: "STL ya da STEP. Tek parça kapalı gövde en iyisi; çok parçalı (açık kasalı ROV) da olur.",
     units: "Dosya birimi", water: "Su", fresh: "Tatlı su (1000)", sea: "Deniz suyu (1025)",
     axesWhy: "3B görüntüde kırmızı ok aracın ÖNÜNÜ, mavi ok AŞAĞIYI göstermeli. Göstermiyorsa aşağıdan düzelt.",
@@ -241,7 +242,8 @@ const T = {
     howTitle: "How it works", how1: "Upload your CAD and check which way is forward and up.",
     how2: "Enter the mass; click thrusters and fins onto the model.",
     how3: "Build: summary, checks and files to download.",
-    example: "Try an example (REMUS 100 hull)",
+    example: "Try an example (REMUS 100)",
+    exampleReady: "Example ready: hull, centre of gravity, 4 tail fins and the propeller are loaded. Press 'Build model'.",
     s1: "CAD file", s1why: "STL or STEP. A single closed hull is best; a multi-part open-frame ROV works too.",
     units: "File units", water: "Water", fresh: "Fresh (1000)", sea: "Sea (1025)",
     axesWhy: "In the 3D view the red arrow must point FORWARD and the blue one DOWN. If not, fix it below.",
@@ -418,7 +420,14 @@ $("example").addEventListener("click", async () => {
   const ex = await res.json(); uploadId = ex.id;
   $("name").value = ex.spec.name; $("mass").value = ex.spec.mass; $("water").value = ex.spec.water;
   $("unit").value = ex.spec.unit; $("fwd").value = ex.spec.forward; $("up").value = ex.spec.up;
+  [$("cgx").value, $("cgy").value, $("cgz").value] = ex.spec.cg || ["", "", ""];
+  $("mvol").value = ex.spec.volume ?? "";
+  items.length = 0;
+  for (const f of ex.spec.fins || []) items.push({ kind: "fin", ...f });
+  for (const th of ex.spec.thrusters || []) items.push({ kind: "thruster", ...th });
   await loadPreview(ex.filename);
+  renderItems(); drawMarks();
+  status(t("exampleReady"));
 });
 $("deletefiles").addEventListener("click", async (e) => {
   e.preventDefault(); if (!uploadId) return;
@@ -557,7 +566,7 @@ $("build").addEventListener("click", async () => {
 
 // ---------- results ----------
 const DOF = ["u", "v", "w", "p", "q", "r"];
-function n(v, d = 3) { const x = +v; if (!isFinite(x)) return "–"; if (x === 0) return "0";
+function n(v, d = 3) { const x = +v; if (!isFinite(x)) return "–"; if (Math.abs(x) < 1e-15) return "0";
   return Math.abs(x) >= 1e4 || Math.abs(x) < 1e-3 ? x.toExponential(2) : x.toPrecision(d); }
 function esc(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]); }
 function card(kind, k, v, r = "") { return `<div class="card ${kind}"><div class="k">${k}</div><div class="v">${v}</div>${r ? `<div class="r">${r}</div>` : ""}</div>`; }

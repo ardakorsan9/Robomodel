@@ -283,6 +283,17 @@ def example() -> dict:
         a=0.191, b=0.654, c=0.541, d=0.191, n=2.0, theta=0.436, a_offset=0.0165, c_offset=0.0368
     )
     mesh = build_mesh(Geometry(primitive="myring", dims=dims))
+    # Positions in the body frame of this file (origin at the hull's mid-length), metres.
+    cb_x = float(mesh.center_mass[0])
+    tail_x = float(mesh.bounds[0, 0])
+    fin_x = round(cb_x - 0.638, 4)  # Prestero Table 2.2: fins 0.638 m behind the CB
+    fin_r = 0.0904  # hull radius at the fin + half span
+    fins = [
+        {"name": "rudder_top", "position": [fin_x, 0, -fin_r], "normal": "+y"},
+        {"name": "rudder_bottom", "position": [fin_x, 0, fin_r], "normal": "+y"},
+        {"name": "plane_port", "position": [fin_x, -fin_r, 0], "normal": "+z"},
+        {"name": "plane_stbd", "position": [fin_x, fin_r, 0], "normal": "+z"},
+    ]
     mesh.apply_scale(1000.0)
     mesh.export(folder / "cad.stl")
     (folder / "name.txt").write_text("remus100_hull.stl", encoding="utf-8")
@@ -293,8 +304,15 @@ def example() -> dict:
         "unit": "mm",
         "forward": "+x",
         "up": "-z",
-        "note": "REMUS 100 hull (Prestero 2001). Add the 4 tail fins at x = -0.69 m to see "
-        "their effect.",
+        # Prestero 2001: CG 1.96 cm below the CB; four 66.5 cm^2 tail fins, span 8.57 cm.
+        "cg": [round(cb_x, 4), 0.0, 0.0196],
+        # Weighed in water: B = 306 N (Table 2.3); the CAD counts the flooded nose as solid.
+        "volume": round(306 / (1025 * 9.80665), 5),
+        "fins": [dict(f, area_cm2=66.5, span_cm=8.57, control=True) for f in fins],
+        # The REMUS propeller, as a thruster: ~15 N gives its 2.5 m/s top speed (estimate).
+        "thrusters": [{"name": "propeller", "position": [round(tail_x + 0.01, 4), 0, 0],
+                       "direction": "+x", "model": "REMUS prop", "max_forward": 15,
+                       "max_reverse": 8}],
     }
     return {"id": upload_id, "filename": "remus100_hull.stl", "spec": spec}
 

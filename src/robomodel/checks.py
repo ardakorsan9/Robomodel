@@ -24,12 +24,17 @@ class Check:
     detail: str
 
 
+def _tidy(x: float, scale: float) -> float:
+    """Round-off far below the matrix's own size is shown as 0."""
+    return 0.0 if abs(x) < 1e-12 * max(scale, 1e-300) else x
+
+
 def _sym_pd(m: np.ndarray, semi: bool = False) -> tuple[bool, float, float]:
     asym = float(np.max(np.abs(m - m.T)) / max(np.max(np.abs(m)), 1e-12))
     eig = float(np.min(np.linalg.eigvalsh((m + m.T) / 2)))
     scale = max(float(np.max(np.abs(m))), 1e-12)
     ok = asym < 1e-9 and (eig >= -1e-9 * scale if semi else eig > 1e-9 * scale)
-    return ok, asym, eig
+    return ok, _tidy(asym, 1.0), _tidy(eig, scale)
 
 
 def run_checks(dyn: Dynamics, speed: float = 1.0) -> list[Check]:
