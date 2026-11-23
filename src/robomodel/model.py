@@ -382,8 +382,10 @@ def _aerial_warnings(vehicle, props, hov, hull) -> list[str]:
         return out
     if not hov.possible:
         out.append(
-            "the rotors cannot hold the drone level in hover (too little thrust, or the centre "
-            "of gravity is outside the rotors' reach): check max_thrust, rotor positions and CG"
+            "the rotors cannot hold the drone level in hover: too little thrust, the centre of "
+            "gravity outside the rotors' reach, or spin directions that tie yaw to roll/pitch "
+            "(in an X or + layout, opposite rotors spin the same way): check max_thrust, "
+            "positions, spins and CG"
         )
     elif hov.thrust_to_weight < 1.5:
         out.append(

@@ -320,6 +320,7 @@ def _run_robot_build(folder: str, spec: dict, files: dict, result_id: str) -> No
     """Worker process: a jointed robot from per-link CAD files in assembly coordinates."""
     from robomodel.checks import summary
     from robomodel.multibody.assembly import (
+        assembly_warnings,
         description_from_assembly,
         holding_torques,
         robot_from_assembly,
@@ -349,7 +350,10 @@ def _run_robot_build(folder: str, spec: dict, files: dict, result_id: str) -> No
         write_robot_matlab(robot, out / "matlab", f"../urdf/{urdf.name}")
         checks = run_robot_checks(robot)
         hold = holding_torques(robot)
+        warnings = assembly_warnings(spec, robot)
         text = robot_report(robot)
+        if warnings:
+            text += "\n\nWarnings:\n" + "\n".join(f"  ! {w}" for w in warnings)
         if hold:
             text += "\n\nHolding torque against gravity (N m; N for sliders):\n" + "\n".join(
                 f"  {k:<14} zero pose {v['zero_pose']:+.4g}, worst pose {v['worst']:.4g}"
@@ -367,7 +371,7 @@ def _run_robot_build(folder: str, spec: dict, files: dict, result_id: str) -> No
             "report": text,
             "checks": [{"name": c.name, "status": c.status, "detail": c.detail} for c in checks],
             "checks_text": summary(checks),
-            "warnings": [],
+            "warnings": warnings,
             "summary": {
                 "category": "multibody",
                 "dof": robot.dof_names,

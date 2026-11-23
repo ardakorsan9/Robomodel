@@ -212,8 +212,9 @@ def _aerial_checks(dyn: Dynamics) -> list[Check]:
             Check(
                 "can hover level",
                 FAIL,
-                f"unbalanced by {100 * hov.residual:.1f} % of the weight: too little thrust or "
-                "the CG is outside the rotors",
+                f"unbalanced by {100 * hov.residual:.1f} % of the weight: too little thrust, "
+                "the CG outside the rotors, or spin directions that tie yaw to roll/pitch "
+                "(diagonal rotors must spin the same way)",
             )
         )
     out.append(

@@ -129,3 +129,14 @@ def test_web_robot_build(arm_files):
         "report.txt",
     ):
         assert f"arm2/{part}" in names
+
+
+def test_joint_far_from_its_links_is_flagged(arm_files):
+    from robomodel.multibody.assembly import assembly_warnings
+
+    good = robot_from_assembly(SPEC, arm_files)
+    assert assembly_warnings(SPEC, good) == []
+    joints = [dict(SPEC["joints"][0]), dict(SPEC["joints"][1], position=[0.8, 0, 15.0])]
+    bad_spec = dict(SPEC, joints=joints)
+    warnings = assembly_warnings(bad_spec, robot_from_assembly(bad_spec, arm_files))
+    assert any("elbow" in w and "far from the links" in w for w in warnings)

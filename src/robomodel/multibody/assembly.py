@@ -95,6 +95,45 @@ def robot_from_assembly(spec: dict, files: dict[str, Path]) -> Robot:
     return parse_robot(description_from_assembly(spec, files))
 
 
+JOINT_MARGIN = 0.1  # of the robot's size: a joint further than this outside every part
+
+
+def assembly_warnings(spec: dict, robot: Robot) -> list[str]:
+    """Joints placed far from the parts they connect (a typo or a click beside the model)."""
+    out = []
+    boxes = {}
+    origin = {
+        str(j["child"]): np.asarray(j.get("position", [0, 0, 0]), float)
+        for j in spec.get("joints") or []
+    }
+    for name, link in robot.links.items():
+        if link.mesh is not None:
+            boxes[name] = np.asarray(link.mesh.bounds) + origin.get(name, np.zeros(3))
+    if not boxes:
+        return out
+    lo = np.min([b[0] for b in boxes.values()], axis=0)
+    hi = np.max([b[1] for b in boxes.values()], axis=0)
+    margin = JOINT_MARGIN * float(np.max(hi - lo))
+    for j in spec.get("joints") or []:
+        p = np.asarray(j.get("position", [0, 0, 0]), float)
+        near = [boxes[k] for k in (str(j.get("parent")), str(j.get("child"))) if k in boxes]
+        inside = any(np.all(p >= b[0] - margin) and np.all(p <= b[1] + margin) for b in near)
+        if near and not inside:
+            out.append(
+                f"joint {j.get('name')} at {np.round(p, 3).tolist()} m is far from the links it "
+                f"connects ({j.get('parent')}, {j.get('child')}): check its position and units"
+            )
+    for lk in robot.links.values():
+        if lk.mass > 0 and lk.mesh is not None:
+            volume = abs(float(getattr(lk.mesh, "volume", 0.0)))
+            if volume > 0 and not 100 <= lk.mass / volume <= 20000:
+                out.append(
+                    f"link {lk.name}: {lk.mass:g} kg in {volume:.3g} m^3 is not plausible "
+                    "(check the mass and the file units)"
+                )
+    return out
+
+
 def _pose_samples(robot: Robot, n: int, rng) -> np.ndarray:
     lows, highs = [], []
     for name in robot.dof_names:

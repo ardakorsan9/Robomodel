@@ -214,7 +214,7 @@ const T = {
     type_other: "Diğer", type_other_d: "bacaklı, karma robotlar",
     example: "Örnekle dene (REMUS 100)",
     exampleReady: "Örnek hazır: gövde, ağırlık merkezi, 4 kuyruk kanadı ve pervane yüklendi. 'Modeli oluştur'a bas.",
-    s1: "CAD dosyası", s1why: "STL ya da STEP. Tek parça kapalı gövde en iyisi; çok parçalı (açık kasalı ROV) da olur.",
+    s1: "CAD dosyası", s1why: "En iyisi STEP montajı: her parçanın adından malzemesi tahmin edilir, kütle doğru yere düşer. Tek parça STL de olur (kütle eşit dağıtılır).",
     units: "Dosya birimi", water: "Su", fresh: "Tatlı su (1000)", sea: "Deniz suyu (1025)",
     axesWhy: "3B görüntüde kırmızı ok aracın ÖNÜNÜ, mavi ok AŞAĞIYI göstermeli. Göstermiyorsa aşağıdan düzelt.",
     fwd: "Ön, dosyanın hangi ekseni?", up: "Üst, dosyanın hangi ekseni?",
@@ -235,6 +235,7 @@ const T = {
     dofK: "Serbestlik derecesi", massK: "Toplam kütle", holdK: "Motor tutma torku", holdOk: "verilen motor sınırlarının içinde", holdOver: "motor sınırını aşıyor: {j}",
     holdTitle: "Yerçekimine karşı tork (N m)", jointCol: "eklem", zeroCol: "çizilen poz", worstCol: "en kötü poz", effortCol: "sınır",
     holdWhy: "Her motorun kolu sadece hareketsiz tutmak için gereken torku: çizilen pozda ve eklem sınırları içindeki en kötü pozda. İvme ve yük için pay ekle.",
+    tArmWarn: "Önce aşağıdaki uyarıları oku: bir eklem ya da kütle yanlış görünüyor.",
     tArmMass: "Her linki motoru ve dişli kutusuyla birlikte tart: atalet ve tutma torkları buna bağlı.",
     tArmFric: "Eklem sürtünmesi ve motor/dişli verisi CAD'de yok: ölç ya da simülasyonda ayarla.",
     downloadA: "⬇ Modeli indir (ROS/Gazebo/MATLAB için URDF, rapor, MATLAB kontrolü)",
@@ -258,19 +259,20 @@ const T = {
     build: "Modeli oluştur", showResults: "Sonuçları göster",
     privacy: "Gizlilik: CAD dosyan sadece bu sunucuda işlenir ve 2 saat sonra otomatik silinir.",
     deleteNow: "Dosyalarımı şimdi sil", emptyView: "CAD dosyanı yükle ya da örnekle dene.",
-    axes: "gövde eksenleri", axX: "x ileri", axY: "y sağ", axZ: "z aşağı",
+    axes: "gövde eksenleri", axX: "x ileri", axY: "y sağ", axZ: "z aşağı", axesArm: "robot eksenleri", axYArm: "y sol", axZArm: "z yukarı",
+    missed: "Tıklama modelin dışına düştü: modelin üzerine tıkla.",
     sizeOk: "Boyut: boy {L} m × en {W} m × yükseklik {H} m", sizeBad: " — birimi kontrol et!",
     uploading: "Yükleniyor: {f} ({mb} MB)...", preview: "3B önizleme hazırlanıyor...",
     loaded: "{f}: {n} üçgen{c}. Boyutu ve okların yönünü kontrol et.", closed: ", kapalı katı",
-    open: ", kapalı değil: montaj olarak işlenecek", needMass: "Önce kütleyi gir.",
+    open: ", kapalı değil: montaj olarak işlenecek", needMass: "Önce kütleyi gir.", needThrust: "{n}: azami itkiyi (N) gir", needMotor: "{n}: tahrikli tekerleğin durma torkunu ve yüksüz devrini gir (ya da tahrikli işaretini kaldır)",
     building: "Model hesaplanıyor (büyük montajlar bir dakika sürebilir)...",
-    done: "Hazır: sonuçlar sağda. MATLAB, Simulink ve Gazebo dosyalarını indirebilirsin.",
+    done: "Hazır: sonuçlar sağda, dosyaları oradan indirebilirsin.",
     deleted: "Dosyaların sunucudan silindi.", exampleLoading: "Örnek yükleniyor...",
     remove: "kaldır", pushes: "itme yönü", modelLbl: "model (T200 hazır)", fwdN: "ileri azami itki (N)",
     revN: "geri azami itki (N)", liftDir: "kaldırma yönü", area: "alan (cm²)", span: "boy (cm)",
     movable: "hareketli (dümen / derinlik dümeni)", partMass: "kütle (kg)", nameLbl: "ad",
     // results
-    resTitle: "Model: {name}", download: "⬇ Modeli indir (MATLAB alt/orta/üst, Simulink, Gazebo, rapor)",
+    resTitle: "Model: {name}", download: "⬇ Modeli indir (MATLAB alt/orta/üst, Simulink, Gazebo, rapor)", downloadNoGz: "⬇ Modeli indir (MATLAB alt/orta/üst, Simulink, rapor)",
     summary: "Özet", todo: "Şimdi ne yapmalı?", trustTitle: "Neye ne kadar güvenebilirim?",
     trustText: "Kütle, hacim, merkezler ve geometri CAD'den güvenilir çıkar. Hız ve dönüş gibi davranışlar su direncine bağlıdır; bu CAD'den kesin çıkmaz, bu yüzden aralık olarak veriyoruz. Kontrolcünü indirilen alt/orta/üst modellerin üçünde de dene.",
     behaviour: "Davranış tahmini", rangeLbl: "aralık {a} – {b}", checks: "Otomatik kontroller",
@@ -281,8 +283,12 @@ const T = {
     draftK: "Suda duruş", draftV: "su çekimi {d} m, suyun üstünde {f} m",
     gmK: "Yan yatma dengesi", gmOk: "dengeli: GM {gm} cm, {deg}°'ye kadar doğrulur", gmNo: "DEVRİLİR: ağırlık merkezini alçalt veya gövdeyi genişlet",
     heaveK: "Dikey salınım periyodu",
-    hoverK: "Havada asılı kalma", hoverOk: "yapabiliyor, itki/ağırlık {tw}", hoverNo: "YAPAMIYOR: itki az ya da ağırlık merkezi rotorların dışında",
-    throttleK: "Hover gazı", climbK: "Tırmanma hızı (tam gaz)",
+    hoverK: "Havada asılı kalma", hoverOk: "yapabiliyor, itki/ağırlık {tw}", hoverNo: "YAPAMIYOR: itki az, ağırlık merkezi rotorların dışında ya da dönüş yönleri yanlış (karşılıklı rotorlar aynı yöne dönmeli)",
+    throttleK: "Hover gazı", climbK: "Tırmanma hızı (tam gaz, üst sınır)", speedAirK: "Son hız (üst sınır)",
+    tRepairAir: "CAD onarıldı ya da voksellerle işlendi: hacim yalnızca sürükleme alanını etkiler, kütleyi tartı belirler.",
+    tCalBoat: "Daha doğru hız ve dönüş için: suda kısa bir test (sabit itkiyle hız, dümenle dönüş) + kalibrasyon.",
+    trustAir: "Kütle, ağırlık merkezi, rotor yerleşimi ve hover itkileri CAD'den güvenilir çıkar. Son hız ve tırmanma hızı üst sınırdır: pervane itkisinin hava hızıyla düşmesi ve hava direncinin tam değeri modelde yok. Tork/itki oranı pervane çapından tahmin edilir; itki standında ölçmek en iyisi.",
+    trustBoat: "Su çekimi, trim, denge (GM) ve geri getirme kuvvetleri CAD'den ve ağırlık merkezinden güvenilir çıkar. Hız ve dönüş su direncine bağlıdır; bunlar aralık olarak verilir. Dalga ve hızlı teknelerdeki dalga direnci modelde yok.",
     tParts: "Bataryayı parça olarak ekle ve rotorlara motor kütlesini gir: atalet (dönme tepkisi) bunlara bağlı.",
     tStand: "Rotorların azami itkisini ve torkunu bir itki test standında ölç; tahmin edilen değerler kontrolcü ayarını değiştirir.",
     tAirspeed: "Hava hızıyla itki düşüşü modelde yok: tırmanma ve son hız gerçekte daha düşük olur.",
@@ -324,7 +330,7 @@ const T = {
     type_other: "Other", type_other_d: "legged, mixed robots",
     example: "Try an example (REMUS 100)",
     exampleReady: "Example ready: hull, centre of gravity, 4 tail fins and the propeller are loaded. Press 'Build model'.",
-    s1: "CAD file", s1why: "STL or STEP. A single closed hull is best; a multi-part open-frame ROV works too.",
+    s1: "CAD file", s1why: "Best: a STEP assembly, each part gets its likely material from its name, so the mass sits in the right place. A single STL works too (mass spread evenly).",
     units: "File units", water: "Water", fresh: "Fresh (1000)", sea: "Sea (1025)",
     axesWhy: "In the 3D view the red arrow must point FORWARD and the blue one DOWN. If not, fix it below.",
     fwd: "Forward is which file axis?", up: "Up is which file axis?",
@@ -344,6 +350,7 @@ const T = {
     dofK: "Degrees of freedom", massK: "Total mass", holdK: "Motor holding torque", holdOk: "within every given motor limit", holdOver: "more than the motor limit at: {j}",
     holdTitle: "Torque against gravity (N m)", jointCol: "joint", zeroCol: "zero pose", worstCol: "worst pose", effortCol: "limit",
     holdWhy: "The torque each motor needs just to hold the arm still, at the drawn pose and at the worst pose inside the joint limits. Add margin for acceleration and payload.",
+    tArmWarn: "Read the warnings below first: a joint or a mass looks wrong.",
     tArmMass: "Weigh each link with its motor and gearbox: inertia and holding torques depend on it.",
     tArmFric: "Joint friction and motor/gearbox data are not in the CAD: measure them or tune in simulation.",
     downloadA: "⬇ Download model (URDF for ROS/Gazebo/MATLAB, report, MATLAB check)",
@@ -368,17 +375,18 @@ const T = {
     privacy: "Privacy: your CAD is processed only on this server and deleted after 2 hours.",
     deleteNow: "Delete my files now", emptyView: "Upload your CAD or try the example.",
     axes: "body axes", axX: "x forward", axY: "y right", axZ: "z down",
+    axesArm: "robot axes", axYArm: "y left", axZArm: "z up", missed: "The click missed the model: click on the model.",
     sizeOk: "Size: length {L} m × width {W} m × height {H} m", sizeBad: " — check the units!",
     uploading: "Uploading {f} ({mb} MB)...", preview: "Preparing the 3D preview...",
     loaded: "{f}: {n} triangles{c}. Check the size and the arrows.", closed: ", closed solid",
-    open: ", not closed: handled as an assembly", needMass: "Enter the mass first.",
+    open: ", not closed: handled as an assembly", needMass: "Enter the mass first.", needThrust: "{n}: enter the max thrust (N)", needMotor: "{n}: enter the stall torque and no-load speed of this driven wheel (or untick driven)",
     building: "Building the model (big assemblies can take a minute)...",
-    done: "Done: results on the right. Download the MATLAB, Simulink and Gazebo files.",
+    done: "Done: results on the right, download the files there.",
     deleted: "Your files were deleted from the server.", exampleLoading: "Loading the example...",
     remove: "remove", pushes: "pushes towards", modelLbl: "model (T200 preset)", fwdN: "max forward thrust (N)",
     revN: "max reverse thrust (N)", liftDir: "lift direction", area: "area (cm²)", span: "span (cm)",
     movable: "movable (rudder / stern plane)", partMass: "mass (kg)", nameLbl: "name",
-    resTitle: "Model: {name}", download: "⬇ Download model (MATLAB low/nominal/high, Simulink, Gazebo, report)",
+    resTitle: "Model: {name}", download: "⬇ Download model (MATLAB low/nominal/high, Simulink, Gazebo, report)", downloadNoGz: "⬇ Download model (MATLAB low/nominal/high, Simulink, report)",
     summary: "Summary", todo: "What to do next", trustTitle: "How far can I trust it?",
     trustText: "Mass, volume, centres and geometry come reliably from the CAD. Speeds and turning depend on water damping, which no CAD can give exactly, so they are shown as a range. Test your controller on all three downloaded models (low / nominal / high).",
     behaviour: "Expected behaviour", rangeLbl: "range {a} – {b}", checks: "Automatic checks",
@@ -389,8 +397,12 @@ const T = {
     draftK: "Floating position", draftV: "draft {d} m, freeboard {f} m",
     gmK: "Heel stability", gmOk: "stable: GM {gm} cm, rights itself up to {deg}°", gmNo: "CAPSIZES: lower the centre of gravity or widen the hull",
     heaveK: "Heave period",
-    hoverK: "Hover", hoverOk: "possible, thrust/weight {tw}", hoverNo: "NOT possible: too little thrust or CG outside the rotors",
-    throttleK: "Hover throttle", climbK: "Climb speed (full throttle)",
+    hoverK: "Hover", hoverOk: "possible, thrust/weight {tw}", hoverNo: "NOT possible: too little thrust, CG outside the rotors, or wrong spin directions (opposite rotors spin the same way)",
+    throttleK: "Hover throttle", climbK: "Climb speed (full throttle, upper bound)", speedAirK: "Top speed (upper bound)",
+    tRepairAir: "The CAD was repaired or voxelised: the volume only affects the drag area; the scale sets the mass.",
+    tCalBoat: "For accurate speeds and turning: a short test on the water (speed at a fixed thrust, a rudder turn) + calibration.",
+    trustAir: "Mass, centre of gravity, rotor layout and hover thrusts come reliably from the CAD. Top speed and climb speed are upper bounds: thrust falling with airspeed and the exact air drag are not modelled. The torque/thrust ratio is estimated from the propeller size; a thrust stand measures it best.",
+    trustBoat: "Draft, trim, stability (GM) and restoring forces come reliably from the CAD and the centre of gravity. Speed and turning depend on water drag and are given as ranges. Waves and wave-making drag of fast boats are not modelled.",
     tParts: "Add the battery as a part and give the motor mass for each rotor: the inertia (how it rotates) depends on them.",
     tStand: "Measure each rotor's maximum thrust and torque on a thrust stand; estimated values change the controller tuning.",
     tAirspeed: "Thrust falling with airspeed is not modelled: real climb and top speeds are lower.",
@@ -469,6 +481,12 @@ function renderTypes() {
   document.body.classList.toggle("air", robotType === "drone");
   document.body.classList.toggle("ground", robotType === "ground");
   document.body.classList.toggle("arm", robotType === "arm");
+  const arm = robotType === "arm";
+  const lg = $("legend");
+  lg.children[0].textContent = t(arm ? "axesArm" : "axes");
+  lg.children[2].textContent = t(arm ? "axYArm" : "axY");
+  lg.children[3].textContent = t(arm ? "axZArm" : "axZ");
+  if (root.children.length) applyTransform();
   $("cad").multiple = robotType === "arm";
   if (robotType === "arm" && mode && mode !== "joint") mode = null;
   if ((robotType === "drone" || robotType === "ground") && (mode === "thruster" || mode === "fin")) mode = null;
@@ -536,8 +554,14 @@ function applyTransform() {
   size = box.getSize(new THREE.Vector3()).length();
   if (axesHelper) scene.remove(axesHelper);
   axesHelper = new THREE.Group();
-  [[1,0,0],[0,1,0],[0,0,1]].forEach((d, i) => axesHelper.add(new THREE.ArrowHelper(
-    new THREE.Vector3(...d), new THREE.Vector3(0,0,0), size * 0.45, [0xdd2222, 0x1a8f2a, 0x2550d8][i], size*0.06, size*0.03)));
+  const dirs = robotType === "arm" ? [[1,0,0],[0,-1,0],[0,0,-1]] : [[1,0,0],[0,1,0],[0,0,1]];  // arm: z up
+  dirs.forEach((d, i) => {
+    const arrow = new THREE.ArrowHelper(new THREE.Vector3(...d), new THREE.Vector3(0,0,0), size * 0.45,
+      [0xdd2222, 0x1a8f2a, 0x2550d8][i], size*0.06, size*0.03);
+    // drawn on top: an axis inside the hull (forward, for a torpedo) must still be seen
+    arrow.traverse((o) => { if (o.material) { o.material.depthTest = false; o.material.transparent = true; } o.renderOrder = 999; });
+    axesHelper.add(arrow);
+  });
   scene.add(axesHelper);
   controls.target.copy(c);
   camera.position.copy(c).add(new THREE.Vector3(-size, size * 0.9, -size * 0.6));
@@ -570,6 +594,11 @@ $("cad").addEventListener("change", async (e) => {
   const up = await fetch("/api/upload", { method: "POST", body: form });
   if (!up.ok) return status(await errorText(up), true);
   uploadId = (await up.json()).id;
+  // A new CAD starts a new vehicle: nothing from an earlier file or the example carries over.
+  items.length = 0; renderItems(); drawMarks();
+  $("name").value = file.name.replace(/\.[^.]+$/, "").replace(/\W+/g, "_") || "my_vehicle";
+  for (const id of ["mass", "cgx", "cgy", "cgz", "mvol"]) $(id).value = "";
+  $("result").style.display = "none"; $("showresult").style.display = "none"; lastResult = null;
   await loadPreview(file.name);
 });
 $("example").addEventListener("click", async () => {
@@ -634,6 +663,7 @@ async function addArmLink(file) {
   root.add(mesh); $("empty").style.display = "none";
   const name = file.name.replace(/\.[^.]+$/, "").replace(/\W+/g, "_") || `link${armLinks.length}`;
   armLinks.push({ name, upload: id, mass: "", mesh, color });
+  if (["my_vehicle", ""].includes($("name").value)) $("name").value = "robot_arm";
   applyTransform(); renderLinks(); renderItems();
   $("build").disabled = false; $("deletefiles").style.display = "inline";
   status(t("linkLoaded", { f: file.name, n: armLinks.length }));
@@ -687,7 +717,8 @@ function showArmResult(r, open) {
     ${Object.keys(hold).length ? `<h4>${t("holdTitle")}</h4><table class="hold"><tr><th>${t("jointCol")}</th><th>${t("zeroCol")}</th><th>${t("worstCol")}</th><th>${t("effortCol")}</th></tr>
       ${Object.entries(hold).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${n(v.zero_pose)}</td><td class="${v.effort !== null && v.worst > v.effort ? "bad" : ""}">${n(v.worst)}</td><td>${v.effort === null ? "–" : n(v.effort)}</td></tr>`).join("")}</table>
       <p class="hint">${t("holdWhy")}</p>` : ""}
-    <h4>${t("todo")}</h4><ol class="todo"><li>${t("tArmMass")}</li><li>${t("tArmFric")}</li></ol>
+    <h4>${t("todo")}</h4><ol class="todo">${r.warnings.length ? `<li>${t("tArmWarn")}</li>` : ""}<li>${t("tArmMass")}</li><li>${t("tArmFric")}</li></ol>
+    ${r.warnings.length ? `<h4>${t("warnings")}</h4>${r.warnings.map((x) => `<div class="check src">⚠ ${esc(x)}</div>`).join("")}` : ""}
     <h4>${t("checks")}</h4>
     ${r.checks.map((c) => `<div class="check"><span class="badge ${c.status}">${c.status}</span>${esc(checkName(c))} <span class="src">${esc(c.detail)}</span></div>`).join("")}
     <h4>${t("details")}</h4>
@@ -717,12 +748,19 @@ canvas.addEventListener("pointerup", (e) => {
   const r = canvas.getBoundingClientRect();
   mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(mouse, camera);
-  const hit = ray.intersectObjects(pickables)[0]; if (!hit) return;
+  const hit = ray.intersectObjects(pickables)[0];
+  if (!hit) { status(t("missed"), true); return; }  // a click beside the model: say so
   const pos = [hit.point.x, hit.point.y, hit.point.z].map((v) => +v.toFixed(4));
   const n = items.filter((i) => i.kind === mode).length;
   if (mode === "thruster") items.push({ kind: "thruster", name: `thruster${n}`, position: pos, direction: "+x", model: "T200", max_forward: "", max_reverse: "" });
   if (mode === "fin") items.push({ kind: "fin", name: `fin${n}`, position: pos, normal: "+y", area_cm2: 66, span_cm: 8.5, control: true });
-  if (mode === "rotor") items.push({ kind: "rotor", name: `rotor${n}`, position: pos, spin: n % 2 ? "cw" : "ccw", max_thrust: "", diameter_in: 10, motor_g: "" });
+  if (mode === "rotor") {
+    // X layout (PX4): front-right and rear-left ccw, the other diagonal cw; on an axis (+ layout)
+    // alternate by click order
+    const [rx, ry] = pos, onAxis = Math.min(Math.abs(rx), Math.abs(ry)) < 0.2 * Math.max(Math.abs(rx), Math.abs(ry));
+    const spin = onAxis ? (n % 2 ? "cw" : "ccw") : (rx * ry > 0 ? "ccw" : "cw");
+    items.push({ kind: "rotor", name: `rotor${n}`, position: pos, spin, max_thrust: "", diameter_in: 10, motor_g: "" });
+  }
   if (mode === "wheel") items.push({ kind: "wheel", name: `wheel${n}`, position: pos, radius_cm: 5, width_cm: 3, driven: true, steered: false, caster: false, stall: "", rpm: "", mass_g: "" });
   if (mode === "joint") {
     const names = armLinks.map((lk) => lk.name);
@@ -881,6 +919,12 @@ $("build").addEventListener("click", async () => {
     lastResult = await res.json(); status(t("done")); showArmResult(lastResult, true); return;
   }
   if (!num("mass")) return status(t("needMass"), true);
+  const missing = [];
+  for (const it of items) {
+    if (it.kind === "rotor" && !(+it.max_thrust > 0)) missing.push(t("needThrust", { n: it.name }));
+    if (it.kind === "wheel" && it.driven && !(+it.stall > 0 && +it.rpm > 0)) missing.push(t("needMotor", { n: it.name }));
+  }
+  if (missing.length) return status(missing.join(" · "), true);
   $("build").disabled = true; status(t("building"));
   const res = await fetch(`/api/build/${uploadId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(spec()) });
   $("build").disabled = false;
@@ -944,6 +988,7 @@ function showGroundResult(r, open) {
 }
 function showResult(r, open) {
   if (r.summary && r.summary.category === "ground") return showGroundResult(r, open);
+  if (r.summary && r.summary.category === "multibody") return showArmResult(r, open);
   const m = r.model, b = r.behaviour || {}, box = $("result");
   const status = (part) => (r.checks.find((c) => c.name.includes(part)) || {}).status;
   const fails = r.checks.filter((c) => c.status === "fail").length;
@@ -967,12 +1012,12 @@ function showResult(r, open) {
       Math.abs(pct) < 0.5 ? t("buoyNeutral") : (net > 0 ? t("buoyUp", { n: n(net), p: n(Math.abs(pct), 2) }) : t("buoyDown", { n: n(net), p: n(Math.abs(pct), 2) }))),
     !water ? "" : card(status("self-righting") === "ok" ? "ok" : "warn", t("rightK"), status("self-righting") === "ok" ? t("rightOk", { cm: n(bg, 2) }) : t("rightNo")),
     hv ? "" : card(status("directionally stable") === "ok" ? "ok" : "warn", t("stabK"), status("directionally stable") === "ok" ? t("stabOk") : t("stabNo")),
-    rangeCard(b, "top_speed", t("speedK"), "m/s"),
+    rangeCard(b, "top_speed", t(hv ? "speedAirK" : "speedK"), "m/s"),
     rangeCard(b, "turn_rate_fins", t("turnK"), "°/s", 180 / Math.PI),
     rangeCard(b, "turn_rate_thrusters", t("turnK"), "°/s", 180 / Math.PI),
     rangeCard(b, "vertical_speed", t("vertK"), "m/s"),
     rangeCard(b, "hover_throttle", t("throttleK"), "%", 100),
-    rangeCard(b, "climb_speed", t("climbK"), "m/s"),
+    rangeCard(b, "climb_speed", t("climbK"), "m/s"),  // an upper bound: no thrust loss with airspeed
     rangeCard(b, "heave_period", t("heaveK"), "s"),
     rangeCard(b, "roll_period", t("rollK"), "s"),
     rangeCard(b, "pitch_period", t("pitchK"), "s"),
@@ -986,14 +1031,14 @@ function showResult(r, open) {
   if (/no thrusters/.test(w)) todo.push(t("tThr"));
   if (/preset/.test(w)) todo.push(t("tPreset"));
   if (/tilted/.test(w)) todo.push(t("tTilt"));
-  if (/closed holes|voxels|inside other solids|duplicate/.test(w)) todo.push(t("tRepair"));
+  if (/closed holes|voxels|inside other solids|duplicate/.test(w)) todo.push(t(hv ? "tRepairAir" : "tRepair"));
   if (/separate bodies/.test(w)) todo.push(t("tSep"));
   if (/height of the centre of gravity/.test(w)) todo.push(t("tCG"));
   if (/Froude/.test(w)) todo.push(t("tFroude"));
   if (/no parts listed/.test(w)) todo.push(t("tParts"));
   if (/thrust stand/.test(w)) todo.push(t("tStand"));
   if (/thrust falling with airspeed/.test(w)) todo.push(t("tAirspeed"));
-  todo.push(t("tCal"));
+  if (!hv) todo.push(t(fl ? "tCalBoat" : "tCal"));
   const diag = (M) => M.value.map((row, i) => row[i]);
   const inertia = diag(m.inertia_g);
   const perAxis = [
@@ -1007,10 +1052,10 @@ function showResult(r, open) {
   box.innerHTML = `
     <button class="close" title="close">×</button>
     <h3>${esc(t("resTitle", { name: m.name }))}</h3>
-    <a class="dl" href="/api/download/${uploadId}/${r.result}"><button class="primary">${t("download")}</button></a>
+    <a class="dl" href="/api/download/${uploadId}/${r.result}"><button class="primary">${t(r.summary.category === "underwater" || !r.summary.category ? "download" : "downloadNoGz")}</button></a>
     <h4>${t("summary")}</h4><div class="cards">${cards}</div>
     <h4>${t("todo")}</h4><ol class="todo">${todo.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
-    <h4>${t("trustTitle")}</h4><div class="trust">${t("trustText")}</div>
+    <h4>${t("trustTitle")}</h4><div class="trust">${t(hv ? "trustAir" : fl ? "trustBoat" : "trustText")}</div>
     <h4>${t("checks")}</h4>
     ${r.checks.map((c) => `<div class="check"><span class="badge ${c.status}">${c.status}</span>${esc(checkName(c))} <span class="src">${esc(c.detail)}</span></div>`).join("")}
     ${r.warnings.length ? `<h4>${t("warnings")}</h4>${r.warnings.map((x) => `<div class="check src">⚠ ${esc(x)}</div>`).join("")}` : ""}
