@@ -35,14 +35,14 @@ Makalenin doğrusal terimleri ölçülmüş; bizimki karesel × 0,1 m/s varsayı
 
 ## Eklenmiş kütle (makalede de ampirik tahmin)
 
-| Eksen | robomodel (saran elipsoit) | Makale (Eidsvik) | Fark |
+| Eksen | robomodel (BEM) | Makale (Eidsvik) | Fark |
 |---|---|---|---|
-| ileri (u) | 13.3 | 6.36 | +109% |
-| yan (v) | 8.99 | 7.12 | +26% |
-| dikey (w) | 39.9 | 18.7 | +114% |
-| yuvarlanma (p) | 0.307 | 0.189 | +62% |
-| yunuslama (q) | 0.13 | 0.135 | -4% |
-| sapma (r) | 0.0228 | 0.222 | -90% |
+| ileri (u) | 9.04 | 6.36 | +42% |
+| yan (v) | 14.4 | 7.12 | +103% |
+| dikey (w) | 36.1 | 18.7 | +93% |
+| yuvarlanma (p) | 0.432 | 0.189 | +128% |
+| yunuslama (q) | 0.282 | 0.135 | +109% |
+| sapma (r) | 0.266 | 0.222 | +20% |
 
 İkisi de tahmin; hangisinin doğru olduğunu bu veriyle bilemeyiz.
 

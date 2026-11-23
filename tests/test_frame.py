@@ -51,7 +51,7 @@ def test_assembly_file_becomes_one_solid(tmp_path):
     model = build_model(v)
     assert model.hull.volume == pytest.approx(2 * 0.4 * 0.1 * 0.1, rel=0.2)
     assert model.body_lift is None  # frame method, not slender-body lift
-    assert "enclosing ellipsoid" in model.m_a.note
+    assert model.m_a.source.value in ("bem", "empirical")  # BEM if installed, else ellipsoid
     assert not any("longest along" in w for w in model.warnings)
 
 

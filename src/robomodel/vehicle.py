@@ -26,6 +26,7 @@ PRIMITIVES = {
 OPTIONAL_DIMS = {"myring": {"a_offset": 0.0, "c_offset": 0.0}}
 ORIGINS = ("center", "buoyancy")
 HYDRODYNAMICS = ("auto", "slender", "frame")
+ADDED_MASS_METHODS = ("auto", "bem", "strip", "frame")
 AXIS_NAMES = ("x", "y", "z", "-x", "-y", "-z")
 
 
@@ -84,6 +85,10 @@ class Geometry:
     # "slender": strip theory and Hoerner drag (torpedo AUVs); "frame": projected areas and
     # an enclosing ellipsoid (open-frame ROVs). "auto": frame for assemblies or L/D < 2.
     hydrodynamics: str = "auto"
+    # Added mass method: "auto" (Lamb for ellipsoids, strip theory for slender hulls, BEM if
+    # installed for box-like / odd hulls, else the enclosing ellipsoid), or force one of
+    # "bem", "strip", "frame".
+    added_mass: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -308,6 +313,10 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
     if hydro not in HYDRODYNAMICS:
         problems.append(f"'geometry.hydrodynamics' must be one of {list(HYDRODYNAMICS)}")
         return None
+    added_mass = raw.get("added_mass", "auto")
+    if added_mass not in ADDED_MASS_METHODS:
+        problems.append(f"'geometry.added_mass' must be one of {list(ADDED_MASS_METHODS)}")
+        return None
     axes = raw.get("axes", ["x", "y", "z"])
     if (
         not isinstance(axes, list)
@@ -344,6 +353,7 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
         origin=origin,
         axes=tuple(axes),
         rotate=tuple(float(a) for a in rotate),
+        added_mass=added_mass,
         assembly=assembly,
         voxel=float(voxel_mm) / 1000,
         hydrodynamics=hydro,

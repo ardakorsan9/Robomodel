@@ -16,7 +16,7 @@ from robomodel.damping import Damping, estimate_damping
 from robomodel.dynamics import Dynamics
 from robomodel.fins import FinModel, fin_model
 from robomodel.frame import frame_added_mass, frame_damping
-from robomodel.geometry import build_mesh, tilt_from_body_x
+from robomodel.geometry import GeometryError, build_mesh, tilt_from_body_x
 from robomodel.hydrostatics import Hydrostatics, hydrostatics
 from robomodel.parameter import Parameter, Source
 from robomodel.rigid_body import (
@@ -82,12 +82,31 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
     # origin. The result does not depend on where the CAD file has its origin.
     centre = np.asarray(hull.center_mass, dtype=float)
     local = replace(sections, x=sections.x - centre[0])
-    if g.primitive == "sphere":
+    from robomodel import bem
+
+    method = g.added_mass
+    exact = g.primitive in ("sphere", "ellipsoid")
+    if method == "auto":
+        # Slender hulls: strip theory, validated on REMUS. Box-like / odd hulls, where strip
+        # theory and the bounding ellipsoid are weak: BEM if installed.
+        if exact:
+            method = "exact"
+        elif frame:
+            method = "bem" if bem.available() and _bem_affordable(hull) else "frame"
+        else:
+            method = "strip"
+    if method == "bem" and not bem.available():
+        raise GeometryError(
+            'added_mass: bem needs the optional packages: pip install "robomodel[bem]"'
+        )
+    if method == "exact" and g.primitive == "sphere":
         r = g.dims["radius"]
         m_a = ellipsoid_added_mass_parameter(r, r, r, rho)
-    elif g.primitive == "ellipsoid":
+    elif method == "exact":
         m_a = ellipsoid_added_mass_parameter(g.dims["a"], g.dims["b"], g.dims["c"], rho)
-    elif frame:
+    elif method == "bem":
+        m_a = bem.bem_parameter(hull, rho, centre)  # about the hull centre, like the others
+    elif method == "frame":
         m_a = frame_added_mass(hull, rho)
     else:
         m_a = strip_theory_parameter(local, float(hull.volume), rho)
@@ -154,6 +173,13 @@ def _move_parameter(param: Parameter, r) -> Parameter:
     value = h.T @ np.asarray(param.value) @ h
     sigma = np.abs(h).T @ np.asarray(param.sigma) @ np.abs(h)
     return Parameter(value, sigma, param.source, param.unit, param.note)
+
+
+def _bem_affordable(hull) -> bool:
+    """Keep automatic BEM away from hulls whose voxel grid would be too big for memory."""
+    from robomodel.voxel import VoxelHull
+
+    return not isinstance(hull, VoxelHull) or hull.filled.size <= 30_000_000
 
 
 FRAME_LD = 2.0  # below this length/diameter a hull is treated as box-like

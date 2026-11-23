@@ -101,7 +101,8 @@ def report(model, areas) -> str:
         "",
         "## Eklenmiş kütle (makalede de ampirik tahmin)",
         "",
-        "| Eksen | robomodel (saran elipsoit) | Makale (Eidsvik) | Fark |",
+        f"| Eksen | robomodel ({'BEM' if model.m_a.source.value == 'bem' else 'saran elipsoit'}) "
+        "| Makale (Eidsvik) | Fark |",
         "|---|---|---|---|",
     ]
     for i, dof in enumerate(DOF):
