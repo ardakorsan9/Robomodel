@@ -44,6 +44,8 @@
   .types button b { display:block; font-size:13px; }
   .types button span { color:var(--muted); font-size:11.5px; }
   .types button.active { background:#eaf2ff; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  body.air .wateronly { display:none !important; }
+  body:not(.air) .aironly { display:none !important; }
   .soon { display:inline-block; background:#eef0f3; color:var(--muted); border-radius:8px; padding:0 6px; font-size:10.5px; margin-left:4px; }
   .size { background:#eef7ee; border-radius:7px; padding:6px 9px; font-size:12.5px; margin-top:8px; display:none; }
   .size.bad { background:#fff1f0; }
@@ -117,7 +119,7 @@
     <div class="row">
       <div><label><span data-i18n="units"></span></label>
         <select id="unit"><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option></select></div>
-      <div><label><span data-i18n="water"></span></label>
+      <div class="wateronly"><label><span data-i18n="water"></span></label>
         <select id="water"><option value="fresh" data-i18n="fresh"></option><option value="sea" data-i18n="sea"></option></select></div>
     </div>
     <p class="hint" data-i18n="axesWhy"></p>
@@ -129,7 +131,7 @@
       <label><input type="checkbox" id="assembly" style="width:auto"> <span data-i18n="assembly"></span></label>
       <div class="row">
         <div><label data-i18n="voxel"></label><input id="voxel" type="number" value="4" min="0.5" step="0.5"></div>
-        <div><label data-i18n="hydro"></label>
+        <div class="wateronly"><label data-i18n="hydro"></label>
           <select id="hydro"><option value="auto">auto</option><option value="slender" data-i18n="slender"></option><option value="frame" data-i18n="frameOpt"></option></select></div>
       </div>
     </details>
@@ -144,7 +146,7 @@
     </div>
     <label><span data-i18n="speed"></span> <small>m/s</small></label><input id="speed" type="number" value="1.0" step="0.1">
     <details class="adv"><summary data-i18n="measuredTitle"></summary>
-      <label><span data-i18n="mvol"></span> <small>m³</small></label><input id="mvol" type="number" step="0.0001">
+      <div class="wateronly"><label><span data-i18n="mvol"></span> <small>m³</small></label><input id="mvol" type="number" step="0.0001"></div>
       <label><span data-i18n="cg"></span> <small>m</small></label>
       <div class="row3"><input id="cgx" type="number" step="0.001" placeholder="x"><input id="cgy" type="number" step="0.001" placeholder="y"><input id="cgz" type="number" step="0.001" placeholder="z"></div>
     </details>
@@ -154,8 +156,9 @@
     <h2><span class="num">3</span><span data-i18n="s3"></span></h2>
     <p class="why" data-i18n="s3why"></p>
     <div class="tools">
-      <button data-mode="thruster" data-i18n="addThruster"></button>
-      <button data-mode="fin" data-i18n="addFin"></button>
+      <button data-mode="thruster" class="wateronly" data-i18n="addThruster"></button>
+      <button data-mode="fin" class="wateronly" data-i18n="addFin"></button>
+      <button data-mode="rotor" class="aironly" data-i18n="addRotor"></button>
       <button data-mode="part" data-i18n="addPart"></button>
     </div>
     <div class="hint" id="modehint"></div>
@@ -209,7 +212,9 @@ const T = {
     measuredTitle: "Ölçtüğüm değerler var (isteğe bağlı)", mvol: "Hacim (suda tartarak)",
     cg: "Ağırlık merkezi x, y, z (gövde ekseni)",
     s3: "İticiler, kanatlar, ağır parçalar", s3why: "Bir araç seç, sonra 3B modelin üzerinde yerine tıkla. Konumlar metre, gövde ekseninde (x ileri, y sağ, z aşağı).",
-    addThruster: "+ itici", addFin: "+ kanat / dümen", addPart: "+ ağır parça (batarya)",
+    addThruster: "+ itici", addFin: "+ kanat / dümen",
+    addRotor: "+ rotor (pervane)", spinLbl: "dönüş yönü (üstten bakınca)", maxThrust: "azami itki (N, itki testinden)", propIn: "pervane çapı (inç)", motorG: "motor + pervane kütlesi (g)",
+    rotor: "rotorun", addPart: "+ ağır parça (batarya)",
     pick: "Bir araç seç, sonra modelin üzerine tıkla.", clickTo: "Modelin üzerinde {what} yerine tıkla.",
     thruster: "iticinin", fin: "kanadın", part: "parçanın",
     build: "Modeli oluştur", showResults: "Sonuçları göster",
@@ -238,6 +243,11 @@ const T = {
     draftK: "Suda duruş", draftV: "su çekimi {d} m, suyun üstünde {f} m",
     gmK: "Yan yatma dengesi", gmOk: "dengeli: GM {gm} cm, {deg}°'ye kadar doğrulur", gmNo: "DEVRİLİR: ağırlık merkezini alçalt veya gövdeyi genişlet",
     heaveK: "Dikey salınım periyodu",
+    hoverK: "Havada asılı kalma", hoverOk: "yapabiliyor, itki/ağırlık {tw}", hoverNo: "YAPAMIYOR: itki az ya da ağırlık merkezi rotorların dışında",
+    throttleK: "Hover gazı", climbK: "Tırmanma hızı (tam gaz)",
+    tParts: "Bataryayı parça olarak ekle ve rotorlara motor kütlesini gir: atalet (dönme tepkisi) bunlara bağlı.",
+    tStand: "Rotorların azami itkisini ve torkunu bir itki test standında ölç; tahmin edilen değerler kontrolcü ayarını değiştirir.",
+    tAirspeed: "Hava hızıyla itki düşüşü modelde yok: tırmanma ve son hız gerçekte daha düşük olur.",
     tCG: "Denge (GM) ağırlık merkezinin yüksekliğine bağlı: ağır parçaları (batarya, motor) listele veya ağırlık merkezini ölç (eğim testi).",
     tFroude: "Direnç hesabı yavaş hızlar için (Froude 0,3'e kadar); daha hızlı teknelerde dalga direnci eksik, son hız fazla çıkar.", buoyancyK: "Kaldırma dengesi",
     rightK: "Devrilince düzelme", rightOk: "Kendi kendine düzelir (BG = {cm} cm)",
@@ -287,7 +297,9 @@ const T = {
     measuredTitle: "I have measured values (optional)", mvol: "Volume (weighing in water)",
     cg: "Centre of gravity x, y, z (body frame)",
     s3: "Thrusters, fins, heavy parts", s3why: "Pick a tool, then click on the 3D model where it sits. Positions in metres, body frame (x forward, y right, z down).",
-    addThruster: "+ thruster", addFin: "+ fin / rudder", addPart: "+ heavy part (battery)",
+    addThruster: "+ thruster", addFin: "+ fin / rudder", addRotor: "+ rotor",
+    spinLbl: "spin (seen from above)", maxThrust: "max thrust (N, thrust stand)", propIn: "propeller diameter (inch)", motorG: "motor + prop mass (g)",
+    rotor: "rotor", addPart: "+ heavy part (battery)",
     pick: "Pick a tool, then click on the model.", clickTo: "Click on the model where the {what} sits.",
     thruster: "thruster", fin: "fin", part: "part",
     build: "Build model", showResults: "Show results",
@@ -315,6 +327,11 @@ const T = {
     draftK: "Floating position", draftV: "draft {d} m, freeboard {f} m",
     gmK: "Heel stability", gmOk: "stable: GM {gm} cm, rights itself up to {deg}°", gmNo: "CAPSIZES: lower the centre of gravity or widen the hull",
     heaveK: "Heave period",
+    hoverK: "Hover", hoverOk: "possible, thrust/weight {tw}", hoverNo: "NOT possible: too little thrust or CG outside the rotors",
+    throttleK: "Hover throttle", climbK: "Climb speed (full throttle)",
+    tParts: "Add the battery as a part and give the motor mass for each rotor: the inertia (how it rotates) depends on them.",
+    tStand: "Measure each rotor's maximum thrust and torque on a thrust stand; estimated values change the controller tuning.",
+    tAirspeed: "Thrust falling with airspeed is not modelled: real climb and top speeds are lower.",
     tCG: "Stability (GM) depends on the height of the centre of gravity: list heavy parts (battery, motor) or measure it (inclining test).",
     tFroude: "Resistance is for slow speeds (Froude up to 0.3); faster boats miss wave resistance, so the top speed comes out high.", buoyancyK: "Buoyancy balance",
     rightK: "Self-righting", rightOk: "Returns upright by itself (BG = {cm} cm)",
@@ -350,6 +367,9 @@ const CHECK_TR = {
   "near neutral buoyancy": "Nötr kaldırmaya yakın (%5 içinde)",
   "velocities decay at rest": "Durgun halde hızlar sönüyor",
   "stable in roll": "Yan yatmada dengeli (GM_T > 0)",
+  "can hover level": "Düz şekilde havada asılı kalabiliyor",
+  "thrust-to-weight": "İtki/ağırlık en az 1,5",
+  "rotors control thrust": "Rotorlar itki, yatış, yunuslama ve dönüşü kontrol ediyor",
   "stable in pitch": "Baş-kıç yönünde dengeli (GM_L > 0)",
   "righting moment over large heel": "Büyük yatma açılarında doğrultma (GZ eğrisi)",
   "directionally stable": "Seyir hızında kontrolsüz yön kararlılığı",
@@ -358,10 +378,11 @@ const CHECK_TR = {
 // Robot types. `ready` = supported now; the others are shown as coming soon.
 const TYPES = [
   { id: "underwater", ready: true }, { id: "surface", ready: true },
-  { id: "drone", ready: false }, { id: "ground", ready: false },
+  { id: "drone", ready: true }, { id: "ground", ready: false },
   { id: "arm", ready: false }, { id: "other", ready: false },
 ];
 let robotType = "underwater";
+const CATEGORY = { underwater: "underwater", surface: "surface", drone: "aerial" };
 function renderTypes() {
   const box = document.getElementById("types"); box.innerHTML = "";
   for (const ty of TYPES) {
@@ -369,10 +390,12 @@ function renderTypes() {
     b.className = ty.id === robotType ? "active" : "";
     b.disabled = !ty.ready;
     b.innerHTML = `<b>${t("type_" + ty.id)}${ty.ready ? "" : `<span class="soon">${t("soon")}</span>`}</b><span>${t("type_" + ty.id + "_d")}</span>`;
-    b.onclick = () => { robotType = ty.id; renderTypes(); };
+    b.onclick = () => { robotType = ty.id; renderTypes(); applyLang(); };
     box.append(b);
   }
   document.getElementById("example").style.display = robotType === "underwater" ? "block" : "none";
+  document.body.classList.toggle("air", robotType === "drone");
+  if (robotType === "drone" && (mode === "thruster" || mode === "fin")) mode = null;
 }
 let lang = localStorage.getItem("robomodel-lang") || ((navigator.language || "").startsWith("tr") ? "tr" : "en");
 const t = (k, vars = {}) => (T[lang][k] ?? T.en[k] ?? k).replace(/\{(\w+)\}/g, (_, v) => vars[v] ?? "");
@@ -532,6 +555,7 @@ canvas.addEventListener("pointerup", (e) => {
   const n = items.filter((i) => i.kind === mode).length;
   if (mode === "thruster") items.push({ kind: "thruster", name: `thruster${n}`, position: pos, direction: "+x", model: "T200", max_forward: "", max_reverse: "" });
   if (mode === "fin") items.push({ kind: "fin", name: `fin${n}`, position: pos, normal: "+y", area_cm2: 66, span_cm: 8.5, control: true });
+  if (mode === "rotor") items.push({ kind: "rotor", name: `rotor${n}`, position: pos, spin: n % 2 ? "cw" : "ccw", max_thrust: "", diameter_in: 10, motor_g: "" });
   if (mode === "part") items.push({ kind: "part", name: `part${n}`, position: pos, mass: 1.0 });
   renderItems(); drawMarks();
 });
@@ -559,7 +583,8 @@ function renderItems() {
   items.forEach((it, idx) => {
     const d = document.createElement("div"); d.className = "item";
     const head = document.createElement("header");
-    const title = document.createElement("span"); title.textContent = `${t(it.kind === "thruster" ? "addThruster" : it.kind === "fin" ? "addFin" : "addPart").replace("+ ", "")}: ${it.name}`;
+    const toolKey = { thruster: "addThruster", fin: "addFin", rotor: "addRotor", part: "addPart" }[it.kind];
+    const title = document.createElement("span"); title.textContent = `${t(toolKey).replace("+ ", "")}: ${it.name}`;
     const rm = document.createElement("button"); rm.textContent = t("remove");
     rm.onclick = () => { items.splice(idx, 1); renderItems(); drawMarks(); };
     head.append(title, rm); d.append(head, field(it, "name", "nameLbl", "text"), posFields(it));
@@ -568,6 +593,12 @@ function renderItems() {
       r.append(field(it, "direction", "pushes", "text", AXES), field(it, "model", "modelLbl", "text"));
       const r2 = document.createElement("div"); r2.className = "row";
       r2.append(field(it, "max_forward", "fwdN"), field(it, "max_reverse", "revN"));
+      d.append(r, r2);
+    } else if (it.kind === "rotor") {
+      const r = document.createElement("div"); r.className = "row";
+      r.append(field(it, "spin", "spinLbl", "text", ["cw", "ccw"]), field(it, "max_thrust", "maxThrust"));
+      const r2 = document.createElement("div"); r2.className = "row";
+      r2.append(field(it, "diameter_in", "propIn"), field(it, "motor_g", "motorG"));
       d.append(r, r2);
     } else if (it.kind === "fin") {
       const r = document.createElement("div"); r.className = "row3";
@@ -583,6 +614,12 @@ function drawMarks() {
     const p = new THREE.Vector3(...it.position);
     if (it.kind === "thruster") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.direction)), p, s * 0.18, 0xff7a00, s * 0.05, s * 0.03));
     if (it.kind === "fin") marks.add(new THREE.ArrowHelper(new THREE.Vector3(...vecFrom(it.normal)), p, s * 0.12, 0x8a2be2, s * 0.04, s * 0.025));
+    if (it.kind === "rotor") {
+      const r = Math.max((+it.diameter_in || 10) * 0.0254 / 2, 1e-3);  // scene is in body metres
+      const disk = new THREE.Mesh(new THREE.CircleGeometry(r, 32), new THREE.MeshBasicMaterial({ color: it.spin === "cw" ? 0x2e7dd7 : 0xd7472e, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+      disk.position.copy(p); marks.add(disk);  // the circle lies in body x-y
+      marks.add(new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), p, s * 0.12, 0xff7a00, s * 0.04, s * 0.025));
+    }
     if (it.kind === "part") { const m = new THREE.Mesh(new THREE.SphereGeometry(s * 0.02), new THREE.MeshBasicMaterial({ color: 0x00a0a0 })); m.position.copy(p); marks.add(m); }
   }
 }
@@ -591,7 +628,7 @@ function drawMarks() {
 function num(id) { const v = $(id).value; return v === "" ? null : +v; }
 function spec() {
   const ax = bodyAxes();
-  const s = { name: $("name").value || "vehicle", category: robotType, mass: num("mass"), water: $("water").value,
+  const s = { name: $("name").value || "vehicle", category: CATEGORY[robotType], mass: num("mass"), water: $("water").value,
     speed: num("speed") ?? 1.0,
     geometry: { unit: $("unit").value, axes: ax ? ax.yaml : ["x", "y", "z"], assembly: $("assembly").checked,
                 voxel: num("voxel") ?? 4, hydrodynamics: $("hydro").value, origin: "center" } };
@@ -605,7 +642,14 @@ function spec() {
     if (x.max_reverse !== "") o.max_reverse = x.max_reverse;
     return o;
   });
-  if (thr.length) s.thrusters = thr;
+  if (thr.length && robotType !== "drone") s.thrusters = thr;
+  const rotors = items.filter((i) => i.kind === "rotor").map((x) => {
+    const o = { position: x.position, spin: x.spin, max_thrust: x.max_thrust === "" ? null : x.max_thrust, diameter: (+x.diameter_in || 0) * 0.0254 };
+    if (x.motor_g !== "" && +x.motor_g > 0) o.motor_mass = x.motor_g / 1000;
+    return o;
+  });
+  if (rotors.length && robotType === "drone") s.rotors = rotors;
+  if (robotType === "drone") { delete s.water; s.air = 1.225; delete s.geometry.hydrodynamics; }
   const fins = items.filter((i) => i.kind === "fin").map((f) => ({ name: f.name, position: f.position,
     normal: vecFrom(f.normal), area: f.area_cm2 / 1e4, span: f.span_cm / 100, control: !!f.control }));
   if (fins.length) s.fins = fins;
@@ -648,17 +692,24 @@ function showResult(r, open) {
     card(status("stable in roll") === "ok" ? "ok" : "fail", t("gmK"), status("stable in roll") === "ok"
       ? t("gmOk", { gm: n(100 * parseFloat(fl["GM_T, GM_L"]), 3), deg: parseFloat(fl["stable up to"]) }) : t("gmNo")),
   ] : [];
+  const hv = m.hover;
+  const airCards = hv ? [
+    card(status("can hover") === "ok" ? "ok" : "fail", t("hoverK"), hv.possible ? t("hoverOk", { tw: n(hv.thrust_to_weight, 3) }) : t("hoverNo")),
+  ] : [];
+  const water = !fl && !hv;
   const cards = [
     card(fails ? "fail" : "ok", t("validK"), fails ? t("validNo") : t("validOk")),
-    ...surfaceCards,
-    fl ? "" : card(Math.abs(pct) < 0.5 ? "ok" : "warn", t("buoyancyK"),
+    ...surfaceCards, ...airCards,
+    !water ? "" : card(Math.abs(pct) < 0.5 ? "ok" : "warn", t("buoyancyK"),
       Math.abs(pct) < 0.5 ? t("buoyNeutral") : (net > 0 ? t("buoyUp", { n: n(net), p: n(Math.abs(pct), 2) }) : t("buoyDown", { n: n(net), p: n(Math.abs(pct), 2) }))),
-    fl ? "" : card(status("self-righting") === "ok" ? "ok" : "warn", t("rightK"), status("self-righting") === "ok" ? t("rightOk", { cm: n(bg, 2) }) : t("rightNo")),
-    card(status("directionally stable") === "ok" ? "ok" : "warn", t("stabK"), status("directionally stable") === "ok" ? t("stabOk") : t("stabNo")),
+    !water ? "" : card(status("self-righting") === "ok" ? "ok" : "warn", t("rightK"), status("self-righting") === "ok" ? t("rightOk", { cm: n(bg, 2) }) : t("rightNo")),
+    hv ? "" : card(status("directionally stable") === "ok" ? "ok" : "warn", t("stabK"), status("directionally stable") === "ok" ? t("stabOk") : t("stabNo")),
     rangeCard(b, "top_speed", t("speedK"), "m/s"),
     rangeCard(b, "turn_rate_fins", t("turnK"), "°/s", 180 / Math.PI),
     rangeCard(b, "turn_rate_thrusters", t("turnK"), "°/s", 180 / Math.PI),
     rangeCard(b, "vertical_speed", t("vertK"), "m/s"),
+    rangeCard(b, "hover_throttle", t("throttleK"), "%", 100),
+    rangeCard(b, "climb_speed", t("climbK"), "m/s"),
     rangeCard(b, "heave_period", t("heaveK"), "s"),
     rangeCard(b, "roll_period", t("rollK"), "s"),
     rangeCard(b, "pitch_period", t("pitchK"), "s"),
@@ -676,6 +727,9 @@ function showResult(r, open) {
   if (/separate bodies/.test(w)) todo.push(t("tSep"));
   if (/height of the centre of gravity/.test(w)) todo.push(t("tCG"));
   if (/Froude/.test(w)) todo.push(t("tFroude"));
+  if (/no parts listed/.test(w)) todo.push(t("tParts"));
+  if (/thrust stand/.test(w)) todo.push(t("tStand"));
+  if (/thrust falling with airspeed/.test(w)) todo.push(t("tAirspeed"));
   todo.push(t("tCal"));
   const diag = (M) => M.value.map((row, i) => row[i]);
   const inertia = diag(m.inertia_g);

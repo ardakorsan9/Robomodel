@@ -49,6 +49,8 @@ class Dynamics:
     g_matrix: np.ndarray | None = None
     eta_rest: np.ndarray = field(default_factory=lambda: np.zeros(6))
     roll_table: np.ndarray = field(default_factory=lambda: np.zeros((2, 0)))
+    kind: str = "underwater"  # underwater | surface | aerial (which checks apply)
+    thrust_max: np.ndarray = field(default_factory=lambda: np.zeros(0))  # N per thruster
 
     @property
     def mass_matrix(self) -> np.ndarray:

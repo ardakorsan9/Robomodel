@@ -88,7 +88,22 @@ parçaları listele ya da ağırlık merkezini ölç (`measured.r_g`). MATLAB ç
 `p.surface = true`, `p.G` ve `p.roll_table` bulunur, simülasyon tekne yüzerken başlar. Gazebo
 çıktısı su üstü araçları için henüz yok. Doğruluk raporu: `docs/dogrulama_su_ustu.md`.
 
-## 8. Gazebo (ROS 2)
+## 8. Drone (çok rotorlu)
+
+Web sayfasında **Hava aracı**'nı seç (YAML'da `category: aerial`). 3. adımda **+ rotor** ile her
+motorun yerine tıkla. Her rotor için şunları gir:
+
+- dönüş yönü (üstten bakınca cw / ccw),
+- azami itki (N; itki standından ya da motor tablosundan),
+- pervane çapı (inç),
+- motor + pervane kütlesi (g).
+
+Bataryayı **ağır parça** olarak ekle. Rapor, drone'un düz şekilde havada asılı kalıp
+kalamayacağını, hover gazını, itki/ağırlık oranını ve rotorların dört yönü (itki, yatış,
+yunuslama, dönüş) kontrol edip etmediğini söyler. MATLAB örneği hover gazıyla başlar ve drone
+yerinde durur; kontrolcünü bunun üstüne kurarsın. Doğruluk raporu: `docs/dogrulama_drone.md`.
+
+## 9. Gazebo (ROS 2)
 
 ```bash
 uv run robomodel gazebo arac.yaml -o gz

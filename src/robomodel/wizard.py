@@ -42,8 +42,31 @@ class Effect:
         return max((abs(v) for v in self.changes.values()), default=0.0)
 
 
+def _aerial_metrics(model: VehicleModel, dyn: Dynamics, thrust_scale: float) -> dict[str, float]:
+    """Hover throttle, climb speed at full thrust, top speed at the steepest level tilt."""
+    from robomodel.aerial import hover
+
+    f_max = dyn.thrust_max * thrust_scale
+    hov = hover(dyn.b_thr, f_max, dyn.weight, dyn.r_g)
+    if not hov.possible or hov.thrust_to_weight <= 1.0:
+        return {}
+    out = {"hover gazı": float(np.max(hov.commands(f_max)))}
+
+    def steady(force: float, axis: int) -> float:
+        a, b = dyn.d_quad[axis], dyn.d_lin[axis]
+        return (-b + np.sqrt(b * b + 4 * a * force)) / (2 * a) if a > 0 else force / b
+
+    spare = (hov.thrust_to_weight - 1.0) * dyn.weight
+    out["tırmanma hızı"] = float(steady(spare, 2))
+    tilt = np.arccos(1.0 / hov.thrust_to_weight)  # all thrust used to stay level
+    out["son hız"] = float(steady(dyn.weight * np.tan(tilt), 0))
+    return out
+
+
 def _metrics(model: VehicleModel, dyn: Dynamics, thrust_scale: float = 1.0) -> dict[str, float]:
     v = model.vehicle
+    if dyn.kind == "aerial":
+        return _aerial_metrics(model, dyn, thrust_scale)
     out = {}
     forward = [i for i, t in enumerate(v.thrusters) if abs(t.direction[0]) > 0.7]
     if forward:

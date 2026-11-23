@@ -9,8 +9,8 @@ M ν̇ + C(ν) ν + D(ν) ν + g(η) = τ,   M = M_RB + M_A
 
 with MATLAB, Simulink and Gazebo files, automatic sanity checks, and an honest statement of how
 far each number can be trusted. Supported: underwater vehicles (torpedo AUVs and open-frame
-ROVs) and surface vessels (boats, USVs). Other robot types (drones, rovers, arms) share the
-same core and are planned.
+ROVs), surface vessels (boats, USVs) and multirotor drones. Ground robots and arms share the
+same core (see the multibody section) and come to the web page next.
 
 Türkçe kılavuz: [docs/KILAVUZ.md](docs/KILAVUZ.md)
 
@@ -124,6 +124,33 @@ and the Clarke et al. (1983) regression (sway added mass −10 %, sway force −
 −45 %): [report](docs/dogrulama_su_ustu.md). Calm-water manoeuvring only: no waves, no
 wave-making resistance above Froude 0.3. Gazebo export is not available for surface vessels.
 
+## Multirotor drones
+
+Set `category: aerial` and list the rotors. robomodel builds the rigid body from the frame CAD
+and the parts (give `motor_mass` per rotor and list the battery), the rotor allocation matrix
+with each propeller's reaction torque, frame drag in air and rotor drag, and checks that the
+drone can hover level, has thrust to spare and controls thrust, roll, pitch and yaw.
+
+```yaml
+name: quad450
+category: aerial
+mass: 1.5
+air: 1.225                      # kg/m^3 (default)
+geometry: {file: frame.stl, unit: mm}
+parts:
+  - {name: battery, mass: 0.35, position: [0, 0, 0.02]}
+rotors:                         # thrust up (-z) by default; spin seen from above
+  - {position: [0.159, 0.159, -0.04], spin: ccw, max_thrust: 8.0, diameter: 0.254, motor_mass: 0.06}
+  - {position: [-0.159, -0.159, -0.04], spin: ccw, max_thrust: 8.0, diameter: 0.254, motor_mass: 0.06}
+  - {position: [0.159, -0.159, -0.04], spin: cw, max_thrust: 8.0, diameter: 0.254, motor_mass: 0.06}
+  - {position: [-0.159, 0.159, -0.04], spin: cw, max_thrust: 8.0, diameter: 0.254, motor_mass: 0.06}
+wind: [3, 0, 0]                 # optional, NED m/s
+```
+
+The MATLAB example starts at the hover commands. Torque/thrust ratio (from the diameter unless
+`torque_ratio` is given) and drag are estimates; thrust falling with airspeed, motor lag and
+gyroscopic effects are not modelled; no Gazebo export yet. [Report](docs/dogrulama_drone.md).
+
 ## Robots with joints (arms, legs, wheeled bases)
 
 A multibody robot is a tree of links connected by joints. Each link's mass properties come
@@ -188,7 +215,8 @@ simulation), self-righting, neutral buoyancy, stability at rest and at cruise sp
 - Large STEP assemblies are slow to load (BlueROV2: 2.5 min, 6 GB RAM); export STL if possible.
 - Gazebo: control-fin deflections and the water current are not exported yet.
 - Surface vessels: yaw-rate derivatives are weak (turns too fast), no waves, no Gazebo export.
-- Drones, ground robots and arms on the web page: not yet.
+- Drones: drag and torque ratio are estimates; no thrust loss with airspeed; no Gazebo export.
+- Ground robots and arms on the web page: not yet (command line `robomodel robot` works).
 
 ## Tests
 
@@ -212,6 +240,7 @@ uv run pytest -m heavy   # also the BlueROV2 test (needs its 309 MB CAD, ~4 GB R
 | `src/robomodel/web.py`, `static/index.html` | Web app |
 | `src/robomodel/bem.py` | Boundary element added mass (optional `robomodel[bem]`) |
 | `src/robomodel/surface.py` | Floating position, GM, GZ curve, restoring matrix, mirror-image hull |
+| `src/robomodel/aerial.py` | Drone hover allocation, thrust-to-weight, rotor drag |
 | `src/robomodel/multihull.py` | Separate hulls computed one by one and added up |
 | `src/robomodel/multibody/` | Links, joints, RNEA/CRBA dynamics, robot files, URDF |
 | `validation/` | REMUS 100, BlueROV2 and calibration studies (write the reports in `docs/`) |

@@ -1,0 +1,19 @@
+# A 450-class quadcopter (X layout, 10" props), every mass listed: the inertia comes out of
+# the parts list and the frame CAD. Motor positions are at the arm tips, 0.225 m from the
+# centre; front-right and rear-left spin ccw, front-left and rear-right cw (PX4 quad X).
+name: quad450
+category: aerial
+mass: 1.5                      # kg, weighed with battery
+air: 1.225                     # kg/m^3
+geometry:
+  primitive: box               # stand-in for the frame CAD: 0.32 x 0.32 x 0.08 m body
+  length: 0.32
+  width: 0.32
+  height: 0.08
+parts:
+  - {name: battery, mass: 0.35, position: [0, 0, 0.02], shape: box, size: [0.14, 0.045, 0.035]}
+rotors:
+  - {position: [0.159, 0.159, -0.04], spin: ccw, max_thrust: 8.0, diameter: 0.254, motor_mass: 0.06}
+  - {position: [-0.159, -0.159, -0.04], spin: ccw, max_thrust: 8.0, diameter: 0.254, motor_mass: 0.06}
+  - {position: [0.159, -0.159, -0.04], spin: cw, max_thrust: 8.0, diameter: 0.254, motor_mass: 0.06}
+  - {position: [-0.159, 0.159, -0.04], spin: cw, max_thrust: 8.0, diameter: 0.254, motor_mass: 0.06}

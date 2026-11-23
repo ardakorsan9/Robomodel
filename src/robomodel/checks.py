@@ -108,12 +108,19 @@ def run_checks(dyn: Dynamics, speed: float = 1.0) -> list[Check]:
         grows, detail = np.inf, f"simulation failed: {e}"
     out.append(Check("free motion loses energy (simulation)", OK if grows < 1e-6 else FAIL, detail))
 
+    aerial = dyn.kind == "aerial"
+    tau_rest = np.zeros(6)
     if surface:
         out += _floating_checks(dyn)
+    elif aerial:
+        from robomodel.aerial import hover_wrench
+
+        tau_rest = hover_wrench(dyn.weight, dyn.r_g)  # hovering, not falling
+        out += _aerial_checks(dyn)
     else:
         out += _submerged_checks(dyn)
 
-    a, _ = linearize(dyn, dyn.rest_state, np.zeros(6))
+    a, _ = linearize(dyn, dyn.rest_state, tau_rest)
     vel = np.linalg.eigvals(a[6:, 6:])
     worst = float(np.max(vel.real))
     out.append(
@@ -123,22 +130,23 @@ def run_checks(dyn: Dynamics, speed: float = 1.0) -> list[Check]:
             f"largest real part {worst:.3g} 1/s",
         )
     )
-    state = dyn.rest_state.copy()
-    state[6] = speed
-    tau0 = np.zeros(6)
-    tau0[0] = dyn.d_lin[0] * speed + dyn.d_quad[0] * speed**2
-    a, _ = linearize(dyn, state, tau0)
-    # Only velocities: a floating vessel's heave/roll/pitch springs give oscillation, which
-    # the velocity block alone does not see; drift in yaw is what needs a controller.
-    worst = float(np.max(np.linalg.eigvals(a[6:, 6:]).real))
-    out.append(
-        Check(
-            f"directionally stable at {speed:g} m/s (no control)",
-            OK if worst <= 1e-9 else WARN,
-            f"largest real part {worst:.3g} 1/s"
-            + ("" if worst <= 1e-9 else ": needs active heading/depth control"),
+    if not aerial:  # a multirotor always flies under attitude control
+        state = dyn.rest_state.copy()
+        state[6] = speed
+        tau0 = np.zeros(6)
+        tau0[0] = dyn.d_lin[0] * speed + dyn.d_quad[0] * speed**2
+        a, _ = linearize(dyn, state, tau0)
+        # Only velocities: a floating vessel's heave/roll/pitch springs give oscillation,
+        # which the velocity block alone does not see; drift in yaw needs a controller.
+        worst = float(np.max(np.linalg.eigvals(a[6:, 6:]).real))
+        out.append(
+            Check(
+                f"directionally stable at {speed:g} m/s (no control)",
+                OK if worst <= 1e-9 else WARN,
+                f"largest real part {worst:.3g} 1/s"
+                + ("" if worst <= 1e-9 else ": needs active heading/depth control"),
+            )
         )
-    )
 
     if dyn.b_thr.shape[1]:
         b = dyn.b_thr / np.maximum(np.abs(dyn.b_thr).max(axis=1, keepdims=True), 1e-12)
@@ -182,6 +190,50 @@ def _floating_checks(dyn: Dynamics) -> list[Check]:
                 + ("" if vanish >= 50 else ": small range of stability, check freeboard and CG"),
             )
         )
+    return out
+
+
+def _aerial_checks(dyn: Dynamics) -> list[Check]:
+    from robomodel.aerial import GOOD_THRUST_TO_WEIGHT, hover
+
+    hov = hover(dyn.b_thr, dyn.thrust_max, dyn.weight, dyn.r_g)
+    out = []
+    if hov.possible:
+        load = 100 * float(np.max(hov.thrust / np.maximum(dyn.thrust_max, 1e-12)))
+        out.append(
+            Check(
+                "can hover level",
+                OK,
+                f"most loaded rotor at {load:.0f} % of its maximum thrust in hover",
+            )
+        )
+    else:
+        out.append(
+            Check(
+                "can hover level",
+                FAIL,
+                f"unbalanced by {100 * hov.residual:.1f} % of the weight: too little thrust or "
+                "the CG is outside the rotors",
+            )
+        )
+    out.append(
+        Check(
+            f"thrust-to-weight ratio at least {GOOD_THRUST_TO_WEIGHT}",
+            OK if hov.thrust_to_weight >= GOOD_THRUST_TO_WEIGHT else WARN,
+            f"T/W = {hov.thrust_to_weight:.2f}",
+        )
+    )
+    controls = dyn.b_thr[2:6] if dyn.b_thr.shape[1] else np.zeros((4, 1))
+    scale = np.maximum(np.abs(controls).max(axis=1, keepdims=True), 1e-12)
+    rank = int(np.linalg.matrix_rank(controls / scale, tol=1e-6))
+    out.append(
+        Check(
+            "rotors control thrust, roll, pitch and yaw",
+            OK if rank == 4 else FAIL,
+            f"{rank} of 4 independent"
+            + ("" if rank == 4 else ": check spin directions and rotor positions"),
+        )
+    )
     return out
 
 

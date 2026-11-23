@@ -161,3 +161,41 @@ def test_surface_vessel_build():
         io.BytesIO(client.get(f"/api/download/{upload}/{body['result']}").content)
     ).namelist()
     assert "web_boat/gazebo/README.txt" in names and "web_boat/matlab/web_boat_params.m" in names
+
+
+def test_drone_build():
+    frame = trimesh.creation.box([300, 300, 60])  # mm
+    buf = io.BytesIO()
+    frame.export(buf, file_type="stl")
+    r = client.post("/api/upload", files={"file": ("quad.stl", buf.getvalue(), "model/stl")})
+    upload = r.json()["id"]
+    rotors = [
+        {"position": [x, y, -0.03], "spin": s, "max_thrust": 8.0, "diameter": 0.254}
+        for x, y, s in (
+            (0.15, 0.15, "ccw"),
+            (-0.15, -0.15, "ccw"),
+            (0.15, -0.15, "cw"),
+            (-0.15, 0.15, "cw"),
+        )
+    ]
+    spec = {
+        "name": "web_quad",
+        "category": "aerial",
+        "mass": 1.5,
+        "air": 1.225,
+        "geometry": {"unit": "mm"},
+        "rotors": rotors,
+        "parts": [{"name": "battery", "mass": 0.35, "position": [0, 0, 0.02]}],
+    }
+    r = client.post(f"/api/build/{upload}", json=spec)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["model"]["hover"]["possible"] is True
+    assert body["behaviour"]["hover_throttle"]["nominal"] == pytest.approx(
+        (1.5 * 9.80665 / 32) ** 0.5, rel=1e-3
+    )
+    assert all(c["status"] != "fail" for c in body["checks"])
+    names = zipfile.ZipFile(
+        io.BytesIO(client.get(f"/api/download/{upload}/{body['result']}").content)
+    ).namelist()
+    assert "web_quad/gazebo/README.txt" in names and "web_quad/matlab/web_quad_params.m" in names

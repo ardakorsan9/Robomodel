@@ -11,10 +11,14 @@ USER_REL_SIGMA = 0.05  # limits measured by the user
 
 
 def allocation_matrix(thrusters: tuple[Thruster, ...]) -> np.ndarray:
-    """6 x n matrix: column i is [d_i; r_i x d_i] for thruster i (force 1 N)."""
+    """6 x n matrix: column i is [d_i; r_i x d_i + k_i d_i] for thruster i (force 1 N), with
+    k_i the propeller's reaction torque per newton (drone rotors; 0 for marine thrusters)."""
     if not thrusters:
         return np.zeros((6, 0))
-    cols = [np.concatenate([t.direction, np.cross(t.position, t.direction)]) for t in thrusters]
+    cols = [
+        np.concatenate([t.direction, np.cross(t.position, t.direction) + t.torque * t.direction])
+        for t in thrusters
+    ]
     return np.column_stack(cols)
 
 

@@ -166,13 +166,13 @@ def _run_build(folder: str, spec: dict, result_id: str) -> None:
         data = to_dict(model)
         (out / "model.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
         write_matlab(model, out / "matlab", speed=float(spec.get("speed", 1.0)))
-        if model.floating is None:
+        if model.vehicle.category == "underwater":
             write_gazebo(model, out / "gazebo")
         else:  # the gz-sim Hydrodynamics plugin assumes a fully submerged body
             (out / "gazebo").mkdir(exist_ok=True)
             (out / "gazebo" / "README.txt").write_text(
-                "Gazebo export is not available for surface vessels yet: gz-sim has no "
-                "plugin for a floating hull's waterline forces. Use the MATLAB files.\n",
+                f"Gazebo export is not available for {model.vehicle.category} vehicles yet; "
+                "use the MATLAB files.\n",
                 encoding="utf-8",
             )
         with zipfile.ZipFile(folder / f"{result_id}.zip", "w", zipfile.ZIP_DEFLATED) as z:
@@ -200,6 +200,7 @@ def _run_build(folder: str, spec: dict, result_id: str) -> None:
                 "bounds": np.asarray(model.hull.bounds).tolist(),
                 "category": model.vehicle.category,
                 "floating": data["floating"]["summary"] if data["floating"] else None,
+                "hover": data["hover"]["summary"] if data["hover"] else None,
             },
             "model": data,  # every value with sigma, source and unit
             "behaviour": _behaviour(model),
@@ -226,6 +227,8 @@ def _behaviour(model) -> dict:
         "yunuslama periyodu": "pitch_period",
         "net kaldırma": "net_buoyancy",
         "dalga periyodu (dikey)": "heave_period",
+        "hover gazı": "hover_throttle",
+        "tırmanma hızı": "climb_speed",
     }
     out: dict = {}
     try:

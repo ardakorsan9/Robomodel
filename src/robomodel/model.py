@@ -26,7 +26,7 @@ from robomodel.rigid_body import (
     rigid_body_mass_matrix,
     velocity_transform,
 )
-from robomodel.sections import Sections, slice_hull
+from robomodel.sections import Sections, slice_hull, voxel_sections
 from robomodel.thrusters import allocation_matrix, thrust_rel_sigma
 from robomodel.vehicle import Calibration, Vehicle
 from robomodel.voxel import VoxelHull, voxelize
@@ -50,6 +50,7 @@ class VehicleModel:
     r_hydro: np.ndarray = field(default_factory=lambda: np.zeros(3))  # hull centre, m
     warnings: list[str] = field(default_factory=list)
     floating: object | None = None  # surface.Floating for surface vessels
+    hover: object | None = None  # aerial.Hover for drones
 
     def dynamics(self) -> Dynamics:
         return Dynamics(
@@ -68,6 +69,8 @@ class VehicleModel:
             fin_max=self.fins.max_angles,
             current_ned=np.asarray(self.vehicle.current, dtype=float),
             r_hydro=np.asarray(self.r_hydro, dtype=float),
+            kind=self.vehicle.category,
+            thrust_max=np.array([t.max_forward for t in self.vehicle.thrusters]),
             **self._surface_terms(),
         )
 
@@ -87,6 +90,8 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
     props = mass_properties(vehicle, hull)
     if vehicle.category == "surface":
         return _build_surface(vehicle, hull, props)
+    if vehicle.category == "aerial":
+        return _build_aerial(vehicle, hull, props)
     sections = slice_hull(hull)
     statics = hydrostatics(hull, props.mass, vehicle.water_density, vehicle.measured.volume)
     rho = vehicle.water_density
@@ -298,6 +303,112 @@ def _build_surface(vehicle: Vehicle, hull, props: MassProperties) -> VehicleMode
     if not vehicle.calibration.is_identity:
         model = apply_calibration(model, vehicle.calibration)
     return model
+
+
+def _build_aerial(vehicle: Vehicle, hull, props: MassProperties) -> VehicleModel:
+    """Multirotor: rigid body + rotors, frame drag in air, rotor drag; no buoyancy."""
+    from robomodel.aerial import hover, rotor_drag
+
+    rho = vehicle.water_density  # air
+    m_rb = rigid_body_mass_matrix(props)
+    b_thr = allocation_matrix(vehicle.thrusters)
+    f_max = np.array([t.max_forward for t in vehicle.thrusters])
+    weight = props.mass.value * 9.80665
+    r_g = np.asarray(props.r_g.value, dtype=float)
+    hov = hover(b_thr, f_max, weight, r_g)
+
+    centre = np.asarray(hull.center_mass, dtype=float)
+    voxels = hull if isinstance(hull, VoxelHull) else voxelize(hull, max(hull.extents) / 100)
+    frame = frame_damping(voxels, rho, centre)
+    d_rot = rotor_drag(vehicle.thrusters, hov.thrust, rho)
+    # Frame drag acts at the frame centre; rotor drag is put there too (moments from its
+    # height above the CG are left out).
+    lin = np.asarray(frame.linear.value, dtype=float) + d_rot
+    linear = Parameter(
+        lin,
+        lin * 1.0,
+        Source.ASSUMED,
+        frame.linear.unit,
+        "frame: quadratic x reference speed; rotors: half the momentum ram drag at hover, assumed",
+    )
+    quad = Parameter(
+        np.asarray(frame.quadratic.value),
+        np.asarray(frame.quadratic.sigma),
+        Source.EMPIRICAL,
+        frame.quadratic.unit,
+        f"frame drag in air: C_D = {frame.axial_cd} on projected areas",
+    )
+    damping = replace(frame, linear=linear, quadratic=quad)
+    volume = float(hull.volume)
+    statics = Hydrostatics(
+        volume=Parameter.relative(volume, 0.3, Source.CAD, "m^3", "not used in air"),
+        r_b=Parameter(r_g.copy(), np.zeros(3), Source.CAD, "m", "no buoyancy in air"),
+        weight=Parameter(weight, props.mass.sigma * 9.80665, props.mass.source, "N"),
+        buoyancy=Parameter(0.0, 0.0, Source.CAD, "N", "air buoyancy (~0.1 % of weight) ignored"),
+    )
+    zero = np.zeros((6, 6))
+    model = VehicleModel(
+        vehicle=vehicle,
+        hull=hull,
+        sections=slice_hull(hull) if not isinstance(hull, VoxelHull) else voxel_sections(hull),
+        mass=props,
+        statics=statics,
+        m_rb=m_rb,
+        m_a=Parameter(zero, zero, Source.CAD, "kg, kg m^2", "added mass of air ignored"),
+        damping=damping,
+        b_thr=b_thr,
+        fins=fin_model((), rho),
+        body_lift=None,
+        r_hydro=centre,
+        warnings=_aerial_warnings(vehicle, props, hov, hull),
+        hover=hov,
+    )
+    if not vehicle.calibration.is_identity:
+        model = apply_calibration(model, vehicle.calibration)
+    return model
+
+
+def _aerial_warnings(vehicle, props, hov, hull) -> list[str]:
+    out = list(getattr(hull, "metadata", {}).get("warnings", []))
+    extents = np.asarray(hull.extents)
+    if extents.max() > 20 or extents.max() < 0.02:
+        out.append(f"the drone is {extents.max():.3g} m across: check the file units (mm / m)")
+    rotors = [t for t in vehicle.thrusters if t.torque != 0 or t.diameter > 0]
+    if not vehicle.thrusters:
+        out.append("no rotors: the model has no control inputs")
+        return out
+    if not hov.possible:
+        out.append(
+            "the rotors cannot hold the drone level in hover (too little thrust, or the centre "
+            "of gravity is outside the rotors' reach): check max_thrust, rotor positions and CG"
+        )
+    elif hov.thrust_to_weight < 1.5:
+        out.append(
+            f"thrust-to-weight ratio is {hov.thrust_to_weight:.2f}: under 1.5 leaves little "
+            "thrust for control and wind"
+        )
+    spins = [np.sign(t.torque) for t in rotors]
+    if spins and abs(sum(spins)) > 0 and len(spins) % 2 == 0:
+        out.append(
+            f"{spins.count(1)} rotors spin cw and {spins.count(-1)} ccw: yaw is unbalanced, "
+            "check the spin directions"
+        )
+    if not vehicle.parts:
+        out.append(
+            "no parts listed: the hull mass is spread over the CAD volume, which puts the "
+            "inertia in the wrong place; list the battery and give motor_mass for the rotors"
+        )
+    if any(t.diameter <= 0 for t in rotors):
+        out.append("some rotors have no diameter: their drag is left out")
+    out.append(
+        "rotor torque/thrust ratio, rotor drag and frame drag are estimates: measure thrust "
+        "and torque on a thrust stand and fit with robomodel calibrate"
+    )
+    out.append(
+        "not modelled: thrust falling with airspeed (so climb and top speeds come out high), "
+        "motor response time, gyroscopic rotor effects, ground effect"
+    )
+    return out
 
 
 def _surface_warnings(vehicle, props, fl, hull, sections) -> list[str]:
@@ -579,6 +690,14 @@ def to_dict(model: VehicleModel) -> dict:
             "roll_restoring_Nm": model.floating.roll_moment.tolist(),
             "summary": floating_summary(model),
         },
+        "hover": None
+        if model.hover is None
+        else {
+            "thrust_N": np.asarray(model.hover.thrust).tolist(),
+            "possible": bool(model.hover.possible),
+            "thrust_to_weight": float(model.hover.thrust_to_weight),
+            "summary": hover_summary(model),
+        },
         "warnings": model.warnings,
         "checks": [
             {"name": c.name, "status": c.status, "detail": c.detail}
@@ -611,6 +730,19 @@ def floating_summary(model: VehicleModel) -> dict[str, str]:
         "GZ": ", ".join(f"{a} deg {v:.3g} m" for a, v in gz.items()),
         "stable up to": f"{_vanishing_angle(rel, fl.roll_moment):.0f} deg heel",
         "periods": ", ".join(f"{k} {v:.3g} s" for k, v in periods.items()) + " (undamped)",
+    }
+
+
+def hover_summary(model: VehicleModel) -> dict[str, str]:
+    """Plain-text hover numbers of a drone, for reports."""
+    hov = model.hover
+    f_max = np.array([t.max_forward for t in model.vehicle.thrusters])
+    if not hov.possible:
+        return {"hover": "NOT possible (see checks)", "T/W": f"{hov.thrust_to_weight:.2f}"}
+    return {
+        "rotor thrust": ", ".join(f"{f:.3g}" for f in hov.thrust) + " N",
+        "commands": ", ".join(f"{c:.3f}" for c in hov.commands(f_max)) + " (thrust ~ command^2)",
+        "T/W": f"{hov.thrust_to_weight:.2f} (full thrust / weight)",
     }
 
 
@@ -647,7 +779,11 @@ def report(model: VehicleModel) -> str:
     if model.floating is not None:
         lines += ["", "Floating (surface vessel; eta at rest = [0, 0, z0, heel, trim, 0])"]
         lines += [f"  {k:<16}{v}" for k, v in floating_summary(model).items()]
-    lines += ["", "Hydrodynamics (order: surge, sway, heave, roll, pitch, yaw)"]
+    if model.hover is not None:
+        lines += ["", "Hover (level, still air)"]
+        lines += [f"  {k:<16}{v}" for k, v in hover_summary(model).items()]
+    heading = "Aerodynamics" if model.vehicle.category == "aerial" else "Hydrodynamics"
+    lines += ["", f"{heading} (order: surge, sway, heave, roll, pitch, yaw)"]
     row("M_A diag", model.m_a, diag=True)
     row("D linear", d.linear)
     row("D quadratic", d.quadratic)

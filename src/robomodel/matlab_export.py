@@ -43,6 +43,9 @@ def _mat(a) -> str:
 
 def example_tau(model: VehicleModel) -> tuple[np.ndarray, np.ndarray | None]:
     thrusters = model.vehicle.thrusters
+    if model.hover is not None and model.hover.possible:  # drone: hover in place
+        commands = model.hover.commands(np.array([t.max_forward for t in thrusters]))
+        return model.b_thr @ thrust(thrusters, commands), commands
     if thrusters:
         commands = np.full(len(thrusters), EXAMPLE_COMMAND)
         return model.b_thr @ thrust(thrusters, commands), commands
@@ -192,7 +195,8 @@ end
     written.append(csv)
 
     input_line = (
-        f"tau = robomodel_thrust({_mat([commands])}, p);   % every thruster at {EXAMPLE_COMMAND:g}"
+        f"tau = robomodel_thrust({_mat([commands])}, p);   % "
+        + ("hover" if model.hover is not None else f"every thruster at {EXAMPLE_COMMAND:g}")
         if commands is not None
         else f"tau = [{NO_THRUSTER_SURGE_FORCE:g}; 0; 0; 0; 0; 0];   % no thrusters: push forward"
     )

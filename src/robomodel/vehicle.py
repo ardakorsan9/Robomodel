@@ -12,7 +12,8 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-CATEGORIES = ("underwater", "surface")
+CATEGORIES = ("underwater", "surface", "aerial")
+AIR_DENSITY = 1.225  # kg/m^3, sea level, 15 C (ISA)
 WATER_DENSITY = {"sea": 1025.0, "fresh": 1000.0}  # kg/m^3
 
 # Primitive shapes and the dimensions each one needs (all in metres).
@@ -118,6 +119,11 @@ class Thruster:
     max_reverse: float  # N (positive number), thrust magnitude at command -1
     preset: bool = False  # True if the limits come from THRUSTER_PRESETS, not the user
     dead_band: float = 0.0  # fraction of the command range with no thrust (e.g. 0.05)
+    # Reaction torque of the spinning propeller, N m per N of thrust, acting along
+    # `direction`: + for a rotor spinning clockwise seen from where the thrust points to,
+    # - for counter-clockwise. Drone rotors need it for yaw; marine thrusters ignore it (0).
+    torque: float = 0.0
+    diameter: float = 0.0  # propeller diameter, m (rotors; 0 = not given)
 
 
 @dataclass(frozen=True)
@@ -219,7 +225,10 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         problems.append(f"'category' must be one of {list(CATEGORIES)}, got {category!r}")
 
     mass = _positive(data.get("mass"), "mass", problems)
-    water_density = _water_density(data.get("water", "sea"), problems)
+    if category == "aerial":
+        water_density = _air_density(data.get("air", AIR_DENSITY), problems)  # fluid density
+    else:
+        water_density = _water_density(data.get("water", "sea"), problems)
     geometry = _geometry(data.get("geometry"), base_dir, problems)
 
     parts = tuple(
@@ -232,6 +241,13 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         for i, raw in enumerate(_list(data.get("thrusters"), "thrusters", problems))
         if (t := _thruster(raw, i, problems)) is not None
     )
+    rotors = []
+    for i, raw in enumerate(_list(data.get("rotors"), "rotors", problems)):
+        if (r := _rotor(raw, i, problems)) is not None:
+            rotors.append(r[0])
+            if r[1] is not None:
+                parts = parts + (r[1],)
+    thrusters = thrusters + tuple(rotors)
 
     fins = tuple(
         f
@@ -243,6 +259,8 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
     current = np.zeros(3)
     if "current" in data:
         current = _vector(data["current"], "current", problems)
+    if "wind" in data:  # for aerial vehicles: the air moves like a water current does
+        current = _vector(data["wind"], "wind", problems)
 
     if mass is not None and parts:
         parts_mass = sum(p.mass for p in parts)
@@ -266,6 +284,68 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         calibration=calibration,
         current=current if current is not None else np.zeros(3),
     )
+
+
+def _air_density(value: object, problems: list[str]) -> float:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and 0.3 <= value <= 1.5:
+        return float(value)
+    problems.append(f"'air' must be a density in kg/m^3 (0.3-1.5, sea level 1.225), got {value!r}")
+    return AIR_DENSITY
+
+
+# Propeller torque / thrust ratio when not measured: kappa = D C_P / (2 pi C_T) with typical
+# small-propeller coefficients C_T ~ 0.11, C_P ~ 0.045 (static, APC-style props), assumed.
+ROTOR_TORQUE_PER_DIAMETER = 0.045 / (2 * np.pi * 0.11)
+
+
+def _rotor(raw: object, i: int, problems: list[str]) -> tuple[Thruster, Part | None] | None:
+    """A drone rotor: thrust along `direction` (default up, -z), reaction torque from spin."""
+    label = f"rotors[{i}]"
+    if not isinstance(raw, dict):
+        problems.append(f"{label} must be a mapping with position, spin, max_thrust")
+        return None
+    position = _vector(raw.get("position"), f"{label}.position", problems)
+    direction = _vector(raw.get("direction", [0.0, 0.0, -1.0]), f"{label}.direction", problems)
+    if direction is not None:
+        norm = np.linalg.norm(direction)
+        direction = direction / norm if norm > 1e-9 else None
+        if direction is None:
+            problems.append(f"{label}.direction must not be zero")
+    spin = raw.get("spin")
+    if spin not in ("cw", "ccw"):
+        problems.append(f"{label}.spin must be cw or ccw (seen from above), got {spin!r}")
+    max_thrust = _positive(raw.get("max_thrust"), f"{label}.max_thrust", problems)
+    diameter = raw.get("diameter", 0.0)
+    if isinstance(diameter, bool) or not isinstance(diameter, (int, float)) or diameter < 0:
+        problems.append(f"'{label}.diameter' must be a number of metres >= 0")
+        return None
+    kappa = raw.get("torque_ratio")
+    if kappa is None:
+        if diameter <= 0:
+            problems.append(f"{label} needs diameter (m) or torque_ratio (N m per N of thrust)")
+            return None
+        kappa = ROTOR_TORQUE_PER_DIAMETER * diameter
+    elif isinstance(kappa, bool) or not isinstance(kappa, (int, float)) or kappa <= 0:
+        problems.append(f"'{label}.torque_ratio' must be a positive number (m)")
+        return None
+    motor_mass = raw.get("motor_mass")
+    if motor_mass is not None:
+        motor_mass = _positive(motor_mass, f"{label}.motor_mass", problems)
+    if position is None or direction is None or spin not in ("cw", "ccw") or max_thrust is None:
+        return None
+    rotor = Thruster(
+        model=str(raw.get("model", "rotor")),
+        position=position,
+        direction=direction,
+        max_forward=max_thrust,
+        max_reverse=0.0,  # ordinary ESCs only spin one way
+        torque=float(kappa) if spin == "cw" else -float(kappa),
+        diameter=float(diameter),
+    )
+    part = None
+    if motor_mass:
+        part = Part(name=f"motor{i}", mass=motor_mass, position=position)
+    return rotor, part
 
 
 def _positive(value: object, label: str, problems: list[str]) -> float | None:
