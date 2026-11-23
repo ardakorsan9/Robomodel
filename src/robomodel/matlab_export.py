@@ -21,6 +21,9 @@ from robomodel.model import VehicleModel
 from robomodel.thrusters import thrust
 
 EXAMPLE_TIME = 30.0  # s
+# A hovering drone is unstable without a controller: round-off grows like exp(t / 1.3 s), so
+# MATLAB and Python can only be compared over a short run.
+AERIAL_EXAMPLE_TIME = 5.0  # s
 EXAMPLE_DT = 0.05  # s
 EXAMPLE_COMMAND = 0.5  # every thruster at half command
 NO_THRUSTER_SURGE_FORCE = 10.0  # N, used when the vehicle has no thrusters
@@ -181,7 +184,8 @@ end
     )
 
     tau, commands = example_tau(model)
-    traj = simulate(dyn, EXAMPLE_TIME, tau=tau, dt_out=EXAMPLE_DT)
+    t_end = AERIAL_EXAMPLE_TIME if dyn.kind == "aerial" else EXAMPLE_TIME
+    traj = simulate(dyn, t_end, tau=tau, dt_out=EXAMPLE_DT)
     csv = out / f"{name}_reference.csv"
     header = "t,x,y,z,phi,theta,psi,u,v,w,p,q,r"
     np.savetxt(
@@ -207,7 +211,7 @@ p = {name}_params();
 {input_line}
 x0 = {_mat(dyn.rest_state.reshape(-1, 1))};   % at rest (floating position for a boat)
 opts = odeset('RelTol', 1e-8, 'AbsTol', 1e-10);
-times = 0:{EXAMPLE_DT:g}:{EXAMPLE_TIME:g};
+times = 0:{EXAMPLE_DT:g}:{t_end:g};
 [t, x] = ode45(@(t, x) robomodel_dynamics(t, x, tau, p), times, x0, opts);
 
 % Same run from the Python simulator: the two must agree.
