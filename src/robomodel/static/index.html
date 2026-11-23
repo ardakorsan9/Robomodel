@@ -234,7 +234,12 @@ const T = {
     warnings: "Uyarılar (İngilizce ayrıntı)", details: "Ayrıntılı değerler", matrices: "Matrisler",
     fullReport: "Tam metin raporu",
     buoyNeutral: "Nötr: ne batar ne yüzer", buoyUp: "Yavaşça yüzer (+{n} N, ağırlığın %{p}'i)",
-    buoyDown: "Batar ({n} N, ağırlığın %{p}'i)", buoyancyK: "Kaldırma dengesi",
+    buoyDown: "Batar ({n} N, ağırlığın %{p}'i)",
+    draftK: "Suda duruş", draftV: "su çekimi {d} m, suyun üstünde {f} m",
+    gmK: "Yan yatma dengesi", gmOk: "dengeli: GM {gm} cm, {deg}°'ye kadar doğrulur", gmNo: "DEVRİLİR: ağırlık merkezini alçalt veya gövdeyi genişlet",
+    heaveK: "Dikey salınım periyodu",
+    tCG: "Denge (GM) ağırlık merkezinin yüksekliğine bağlı: ağır parçaları (batarya, motor) listele veya ağırlık merkezini ölç (eğim testi).",
+    tFroude: "Direnç hesabı yavaş hızlar için (Froude 0,3'e kadar); daha hızlı teknelerde dalga direnci eksik, son hız fazla çıkar.", buoyancyK: "Kaldırma dengesi",
     rightK: "Devrilince düzelme", rightOk: "Kendi kendine düzelir (BG = {cm} cm)",
     rightNo: "Düzelmez: ağır parçaları aşağı al", stabK: "Yön kararlılığı",
     stabOk: "Kontrolsüz düz gider", stabNo: "Aktif yön kontrolü gerekir (kanatsız gövdelerde normal)",
@@ -306,7 +311,12 @@ const T = {
     warnings: "Warnings (details)", details: "Detailed values", matrices: "Matrices",
     fullReport: "Full text report",
     buoyNeutral: "Neutral: neither sinks nor floats", buoyUp: "Floats up slowly (+{n} N, {p}% of weight)",
-    buoyDown: "Sinks ({n} N, {p}% of weight)", buoyancyK: "Buoyancy balance",
+    buoyDown: "Sinks ({n} N, {p}% of weight)",
+    draftK: "Floating position", draftV: "draft {d} m, freeboard {f} m",
+    gmK: "Heel stability", gmOk: "stable: GM {gm} cm, rights itself up to {deg}°", gmNo: "CAPSIZES: lower the centre of gravity or widen the hull",
+    heaveK: "Heave period",
+    tCG: "Stability (GM) depends on the height of the centre of gravity: list heavy parts (battery, motor) or measure it (inclining test).",
+    tFroude: "Resistance is for slow speeds (Froude up to 0.3); faster boats miss wave resistance, so the top speed comes out high.", buoyancyK: "Buoyancy balance",
     rightK: "Self-righting", rightOk: "Returns upright by itself (BG = {cm} cm)",
     rightNo: "Does not: move heavy parts lower", stabK: "Course stability",
     stabOk: "Runs straight without control", stabNo: "Needs active heading control (normal without fins)",
@@ -339,12 +349,15 @@ const CHECK_TR = {
   "self-righting": "Devrilince düzelme (ağırlık merkezi kaldırma merkezinin altında)",
   "near neutral buoyancy": "Nötr kaldırmaya yakın (%5 içinde)",
   "velocities decay at rest": "Durgun halde hızlar sönüyor",
+  "stable in roll": "Yan yatmada dengeli (GM_T > 0)",
+  "stable in pitch": "Baş-kıç yönünde dengeli (GM_L > 0)",
+  "righting moment over large heel": "Büyük yatma açılarında doğrultma (GZ eğrisi)",
   "directionally stable": "Seyir hızında kontrolsüz yön kararlılığı",
   "thrusters can push": "İticilerin etki ettiği yönler",
 };
 // Robot types. `ready` = supported now; the others are shown as coming soon.
 const TYPES = [
-  { id: "underwater", ready: true }, { id: "surface", ready: false },
+  { id: "underwater", ready: true }, { id: "surface", ready: true },
   { id: "drone", ready: false }, { id: "ground", ready: false },
   { id: "arm", ready: false }, { id: "other", ready: false },
 ];
@@ -629,16 +642,24 @@ function showResult(r, open) {
   const fails = r.checks.filter((c) => c.status === "fail").length;
   const net = m.buoyancy.value - m.weight.value, pct = (100 * net / m.weight.value);
   const bg = (m.r_g.value[2] - m.r_b.value[2]) * 100;
+  const fl = m.floating && m.floating.summary;
+  const surfaceCards = fl ? [
+    card("ok", t("draftK"), t("draftV", { d: n(parseFloat(fl.draft)), f: n(parseFloat(fl.freeboard)) })),
+    card(status("stable in roll") === "ok" ? "ok" : "fail", t("gmK"), status("stable in roll") === "ok"
+      ? t("gmOk", { gm: n(100 * parseFloat(fl["GM_T, GM_L"]), 3), deg: parseFloat(fl["stable up to"]) }) : t("gmNo")),
+  ] : [];
   const cards = [
     card(fails ? "fail" : "ok", t("validK"), fails ? t("validNo") : t("validOk")),
-    card(Math.abs(pct) < 0.5 ? "ok" : "warn", t("buoyancyK"),
+    ...surfaceCards,
+    fl ? "" : card(Math.abs(pct) < 0.5 ? "ok" : "warn", t("buoyancyK"),
       Math.abs(pct) < 0.5 ? t("buoyNeutral") : (net > 0 ? t("buoyUp", { n: n(net), p: n(Math.abs(pct), 2) }) : t("buoyDown", { n: n(net), p: n(Math.abs(pct), 2) }))),
-    card(status("self-righting") === "ok" ? "ok" : "warn", t("rightK"), status("self-righting") === "ok" ? t("rightOk", { cm: n(bg, 2) }) : t("rightNo")),
+    fl ? "" : card(status("self-righting") === "ok" ? "ok" : "warn", t("rightK"), status("self-righting") === "ok" ? t("rightOk", { cm: n(bg, 2) }) : t("rightNo")),
     card(status("directionally stable") === "ok" ? "ok" : "warn", t("stabK"), status("directionally stable") === "ok" ? t("stabOk") : t("stabNo")),
     rangeCard(b, "top_speed", t("speedK"), "m/s"),
     rangeCard(b, "turn_rate_fins", t("turnK"), "°/s", 180 / Math.PI),
     rangeCard(b, "turn_rate_thrusters", t("turnK"), "°/s", 180 / Math.PI),
     rangeCard(b, "vertical_speed", t("vertK"), "m/s"),
+    rangeCard(b, "heave_period", t("heaveK"), "s"),
     rangeCard(b, "roll_period", t("rollK"), "s"),
     rangeCard(b, "pitch_period", t("pitchK"), "s"),
   ].join("");
@@ -653,6 +674,8 @@ function showResult(r, open) {
   if (/tilted/.test(w)) todo.push(t("tTilt"));
   if (/closed holes|voxels|inside other solids|duplicate/.test(w)) todo.push(t("tRepair"));
   if (/separate bodies/.test(w)) todo.push(t("tSep"));
+  if (/height of the centre of gravity/.test(w)) todo.push(t("tCG"));
+  if (/Froude/.test(w)) todo.push(t("tFroude"));
   todo.push(t("tCal"));
   const diag = (M) => M.value.map((row, i) => row[i]);
   const inertia = diag(m.inertia_g);

@@ -94,6 +94,13 @@ def main(argv: list[str] | None = None) -> int:
         model = _load_model(args.vehicle)
         if model is None:
             return 1
+        if model.floating is not None:
+            print(
+                "error: Gazebo export is not available for surface vessels yet (gz-sim has no "
+                "plugin for a floating hull's waterline forces); use robomodel matlab",
+                file=sys.stderr,
+            )
+            return 1
         for f in write_gazebo(model, args.output, args.disable_coriolis):
             print(f"wrote {f}")
         return 0

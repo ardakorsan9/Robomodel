@@ -73,7 +73,22 @@ Kontrolcü üçünde de çalışıyorsa gerçek araçta da büyük ihtimalle ça
 Hangisinin önce gerektiğini `uv run robomodel wizard arac.yaml` söyler. Havuz testinin planı:
 `uv run robomodel testplan arac.yaml -o plan`.
 
-## 7. Gazebo (ROS 2)
+## 7. Su üstü aracı (tekne, USV)
+
+Web sayfasında ilk adımda **Su üstü aracı**'nı seç (YAML'da `category: surface`). Gövde
+**güverte dahil kapalı** olmalı, çünkü su hattı CAD'den bulunuyor. Raporda şunları görürsün:
+
+- **Su çekimi, trim, yatma:** tekne suda nasıl duruyor.
+- **GM_T:** yan yatma dengesi. Pozitifse tekne kendini doğrultur, negatifse devrilir.
+- **GZ eğrisi:** büyük açılarda doğrultma kolu ve kaç dereceye kadar doğrulduğu.
+- **Doğal periyotlar:** dikey salınım, yatma ve trim.
+
+Bu sonuçların hepsi **ağırlık merkezinin yüksekliğine** bağlı. Batarya ve motor gibi ağır
+parçaları listele ya da ağırlık merkezini ölç (`measured.r_g`). MATLAB çıktısında
+`p.surface = true`, `p.G` ve `p.roll_table` bulunur, simülasyon tekne yüzerken başlar. Gazebo
+çıktısı su üstü araçları için henüz yok. Doğruluk raporu: `docs/dogrulama_su_ustu.md`.
+
+## 8. Gazebo (ROS 2)
 
 ```bash
 uv run robomodel gazebo arac.yaml -o gz

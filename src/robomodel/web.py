@@ -166,7 +166,15 @@ def _run_build(folder: str, spec: dict, result_id: str) -> None:
         data = to_dict(model)
         (out / "model.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
         write_matlab(model, out / "matlab", speed=float(spec.get("speed", 1.0)))
-        write_gazebo(model, out / "gazebo")
+        if model.floating is None:
+            write_gazebo(model, out / "gazebo")
+        else:  # the gz-sim Hydrodynamics plugin assumes a fully submerged body
+            (out / "gazebo").mkdir(exist_ok=True)
+            (out / "gazebo" / "README.txt").write_text(
+                "Gazebo export is not available for surface vessels yet: gz-sim has no "
+                "plugin for a floating hull's waterline forces. Use the MATLAB files.\n",
+                encoding="utf-8",
+            )
         with zipfile.ZipFile(folder / f"{result_id}.zip", "w", zipfile.ZIP_DEFLATED) as z:
             for p in sorted(out.rglob("*")):
                 if p.is_file() and p.name != "result.json":
@@ -190,6 +198,8 @@ def _run_build(folder: str, spec: dict, result_id: str) -> None:
                 "added_mass_diag": np.diag(np.asarray(data["M_A"]["value"])).tolist(),
                 "damping_quadratic": data["D_quadratic"]["value"],
                 "bounds": np.asarray(model.hull.bounds).tolist(),
+                "category": model.vehicle.category,
+                "floating": data["floating"]["summary"] if data["floating"] else None,
             },
             "model": data,  # every value with sigma, source and unit
             "behaviour": _behaviour(model),
@@ -215,6 +225,7 @@ def _behaviour(model) -> dict:
         "yuvarlanma periyodu": "roll_period",
         "yunuslama periyodu": "pitch_period",
         "net kaldırma": "net_buoyancy",
+        "dalga periyodu (dikey)": "heave_period",
     }
     out: dict = {}
     try:

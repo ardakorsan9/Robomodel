@@ -82,7 +82,10 @@ def _metrics(model: VehicleModel, dyn: Dynamics, thrust_scale: float = 1.0) -> d
         out["dönüş hızı (5° dümen)"] = float(abs(traj.nu[-1, 5]))
     elif v.thrusters:
         # ROV-style: turn and dive with thrusters at half command (steady state)
-        for axis, name in ((5, "dönüş hızı (%50 itici)"), (2, "dikey hız (%50 itici)")):
+        axes = ((5, "dönüş hızı (%50 itici)"),)
+        if dyn.g_matrix is None:  # a floating boat does not dive
+            axes += ((2, "dikey hız (%50 itici)"),)
+        for axis, name in axes:
             cols = [
                 i
                 for i in range(dyn.b_thr.shape[1])
@@ -102,6 +105,18 @@ def _metrics(model: VehicleModel, dyn: Dynamics, thrust_scale: float = 1.0) -> d
             force = abs(force)
             speed = (-b + np.sqrt(b * b + 4 * a * force)) / (2 * a) if a > 0 else force / b
             out[name] = float(sign * speed) if axis == 2 else float(speed)
+    if dyn.g_matrix is not None:  # surface vessel: periods from the hydrostatic springs
+        from robomodel.surface import natural_periods
+
+        periods = natural_periods(dyn.mass_matrix, dyn.g_matrix)
+        for key, name in (
+            ("heave", "dalga periyodu (dikey)"),
+            ("roll", "yuvarlanma periyodu"),
+            ("pitch", "yunuslama periyodu"),
+        ):
+            if np.isfinite(periods[key]):
+                out[name] = periods[key]
+        return out
     bg = dyn.r_g[2] - dyn.r_b[2]  # z down: CG below CB means bg > 0
     if bg > 0:
         m = dyn.mass_matrix

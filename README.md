@@ -8,8 +8,9 @@ M ν̇ + C(ν) ν + D(ν) ν + g(η) = τ,   M = M_RB + M_A
 ```
 
 with MATLAB, Simulink and Gazebo files, automatic sanity checks, and an honest statement of how
-far each number can be trusted. First target: underwater vehicles (torpedo AUVs and open-frame
-ROVs). Other robot types (rovers, drones, arms) share the same core and are planned.
+far each number can be trusted. Supported: underwater vehicles (torpedo AUVs and open-frame
+ROVs) and surface vessels (boats, USVs). Other robot types (drones, rovers, arms) share the
+same core and are planned.
 
 Türkçe kılavuz: [docs/KILAVUZ.md](docs/KILAVUZ.md)
 
@@ -98,6 +99,31 @@ robomodel testplan my_auv.yaml -o plan    # pool tests (CSV templates)
 robomodel calibrate my_auv.yaml run1.csv run2.csv --validate run3.csv
 ```
 
+## Surface vessels (boats, USVs)
+
+Set `category: surface`. robomodel floats the CAD hull: it finds draft, trim and heel exactly
+from the closed mesh, the restoring matrix G (waterplane area, GM_T, GM_L) and the GZ curve up
+to ±90° heel. Added mass and damping come from the wet hull plus its mirror image in the water
+surface, halved. The model is `M ν̇ + C(ν)ν + D(ν)ν + G(η − η_rest) = τ`, with the roll
+restoring taken from the GZ curve.
+
+```yaml
+name: my_usv
+category: surface
+mass: 182.2
+water: sea
+geometry: {file: hull.stl, unit: mm}   # closed hull including the deck
+measured: {r_g: [0, 0, -0.05]}         # CG height decides the stability: measure it
+thrusters:
+  - {model: T200, position: [-1.9, 0.08, 0.15], direction: [1, 0, 0]}
+  - {model: T200, position: [-1.9, -0.08, 0.15], direction: [1, 0, 0]}
+```
+
+Validated against closed forms (box barge, Wigley hull: hydrostatics within 0.01 %, GZ exact)
+and the Clarke et al. (1983) regression (sway added mass −10 %, sway force −0 %, yaw damping
+−45 %): [report](docs/dogrulama_su_ustu.md). Calm-water manoeuvring only: no waves, no
+wave-making resistance above Froude 0.3. Gazebo export is not available for surface vessels.
+
 ## Robots with joints (arms, legs, wheeled bases)
 
 A multibody robot is a tree of links connected by joints. Each link's mass properties come
@@ -161,7 +187,8 @@ simulation), self-righting, neutral buoyancy, stability at rest and at cruise sp
 - CAD volume of an open frame is ±30 %: weigh the vehicle in water (`measured.volume`).
 - Large STEP assemblies are slow to load (BlueROV2: 2.5 min, 6 GB RAM); export STL if possible.
 - Gazebo: control-fin deflections and the water current are not exported yet.
-- Only underwater vehicles so far.
+- Surface vessels: yaw-rate derivatives are weak (turns too fast), no waves, no Gazebo export.
+- Drones, ground robots and arms on the web page: not yet.
 
 ## Tests
 
@@ -184,6 +211,7 @@ uv run pytest -m heavy   # also the BlueROV2 test (needs its 309 MB CAD, ~4 GB R
 | `src/robomodel/calibration.py`, `testplan.py`, `wizard.py` | Pool tests and calibration |
 | `src/robomodel/web.py`, `static/index.html` | Web app |
 | `src/robomodel/bem.py` | Boundary element added mass (optional `robomodel[bem]`) |
+| `src/robomodel/surface.py` | Floating position, GM, GZ curve, restoring matrix, mirror-image hull |
 | `src/robomodel/multihull.py` | Separate hulls computed one by one and added up |
 | `src/robomodel/multibody/` | Links, joints, RNEA/CRBA dynamics, robot files, URDF |
 | `validation/` | REMUS 100, BlueROV2 and calibration studies (write the reports in `docs/`) |
