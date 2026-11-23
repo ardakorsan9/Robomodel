@@ -387,14 +387,17 @@ def run_ground_checks(gm: GroundModel) -> list[Check]:
 
 
 def _warnings(gm: GroundModel) -> list[str]:
+    from robomodel import mass_parts
+
     v = gm.vehicle
     out = list(getattr(gm.hull, "metadata", {}).get("warnings", []))
+    out += mass_parts.warnings(gm.mass.distribution)
     extents = np.asarray(gm.hull.extents)
     if extents.max() > 20 or extents.max() < 0.02:
         out.append(f"the robot is {extents.max():.3g} m long: check the file units (mm / m)")
     if gm.cg_height <= 0:
         out.append("the centre of gravity is below the ground: check wheel radii and positions")
-    if not v.parts:
+    if not v.parts and gm.mass.distribution is None:
         out.append(
             "no parts listed: the mass is spread over the CAD volume; list the battery and "
             "motors (and give wheel mass) for a correct CG height and inertia"
@@ -443,7 +446,13 @@ def behaviour(gm: GroundModel) -> dict:
 
 def report(gm: GroundModel) -> str:
     v = gm.vehicle
-    lines = [f"{v.name}  (ground)", "", "Mass and contact"]
+    lines = [f"{v.name}  (ground)", ""]
+    if gm.mass.distribution is not None:
+        from robomodel.mass_parts import summary as parts_summary
+
+        lines += ["Mass over the CAD parts (material guessed from the part names)"]
+        lines += ["  " + x for x in parts_summary(gm.mass.distribution)] + [""]
+    lines.append("Mass and contact")
     lines.append(f"  {'mass':<18}{gm.m:.4g} kg")
     lines.append(f"  {'CG r_g':<18}[" + ", ".join(f"{x:.4g}" for x in gm.mass.r_g.value) + "] m")
     lines.append(f"  {'CG height':<18}{gm.cg_height:.4g} m above the ground")

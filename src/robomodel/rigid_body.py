@@ -29,6 +29,7 @@ class MassProperties:
     r_g: Parameter  # centre of gravity in body frame, m, shape (3,)
     inertia_o: Parameter  # inertia tensor about CO, kg m^2, shape (3, 3)
     inertia_g: Parameter  # inertia tensor about CG, kg m^2, shape (3, 3)
+    distribution: object | None = None  # mass_parts.Distribution when the CAD had parts
 
 
 def skew(v: np.ndarray) -> np.ndarray:
@@ -67,10 +68,19 @@ def mass_properties(vehicle: Vehicle, hull: trimesh.Trimesh) -> MassProperties:
     parts_mass = sum(p.mass for p in vehicle.parts)
     hull_mass = vehicle.mass - parts_mass
 
-    shell = vehicle.geometry.hull_mass == "shell" or (
-        vehicle.geometry.hull_mass == "auto" and vehicle.category == "surface"
-    )
-    if shell and isinstance(hull, trimesh.Trimesh):
+    from robomodel.mass_parts import combined, distribute
+
+    mode = vehicle.geometry.hull_mass
+    cad_parts = getattr(hull, "metadata", {}).get("cad_parts") or []
+    dist = None
+    if mode in ("auto", "parts") and len(cad_parts) >= 2 and hull_mass > 0:
+        dist = distribute(cad_parts, hull_mass)
+    shell = mode == "shell" or (mode == "auto" and vehicle.category == "surface")
+    if dist is not None:
+        # Each CAD part with the density of its likely material, scaled to the weighed mass.
+        _, hull_centroid, inertia_hull_o = combined(dist)
+        hull_inertia_c = inertia_hull_o - point_inertia(hull_mass, hull_centroid)
+    elif shell and isinstance(hull, trimesh.Trimesh):
         hull_centroid, hull_inertia_c = shell_properties(hull, hull_mass)
     else:
         # Uniform solid. trimesh gives the inertia about the centroid for density 1.
@@ -94,12 +104,21 @@ def mass_properties(vehicle: Vehicle, hull: trimesh.Trimesh) -> MassProperties:
         inertia_o = inertia_g + point_inertia(vehicle.mass, r_g)
 
     # Uncertainty: the uniform-hull assumption dominates when the hull carries the mass.
+    # Parts with materials known from their names halve it (densities, not shapes, unsure).
     hull_share = hull_mass / vehicle.mass
+    if dist is not None:
+        hull_share *= 1.0 - 0.5 * dist.share_by_name
     # per axis: a hull cannot hide its CG further than its own size along that axis
     cog_sigma = UNIFORM_COG_SIGMA_FRACTION * np.asarray(hull.extents, dtype=float) * hull_share
-    spread = "over the hull skin" if shell and isinstance(hull, trimesh.Trimesh) else "uniform"
+    if dist is not None:
+        spread = (
+            f"spread over {len(dist.parts)} CAD parts by guessed material "
+            f"({100 * dist.share_by_name:.0f} % of it from part names)"
+        )
+    else:
+        spread = "over the hull skin" if shell and isinstance(hull, trimesh.Trimesh) else "uniform"
     note = (
-        f"hull mass {hull_mass:.3g} kg assumed {spread}; list heavy parts to improve this"
+        f"hull mass {hull_mass:.3g} kg {spread}; list heavy parts to improve this"
         if hull_share > 0
         else "all mass given as parts"
     )
@@ -123,6 +142,7 @@ def mass_properties(vehicle: Vehicle, hull: trimesh.Trimesh) -> MassProperties:
         r_g=r_g_param,
         inertia_o=inertia_param(inertia_o, inertia_measured),
         inertia_g=inertia_param(inertia_g, inertia_measured),
+        distribution=dist,
     )
 
 

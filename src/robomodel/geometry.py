@@ -31,6 +31,7 @@ def build_mesh(geometry: Geometry) -> trimesh.Trimesh | VoxelHull:
     else:
         mesh = _PRIMITIVE_BUILDERS[geometry.primitive](**geometry.dims)
     notes: list[str] = []
+    parts = mesh.metadata.get("cad_parts", []) if geometry.file is not None else []
     if geometry.file is not None:
         mesh, notes = _clean(mesh)
     if len(mesh.faces) == 0 or np.min(mesh.extents) <= 1e-9 * max(np.max(mesh.extents), 1e-12):
@@ -56,14 +57,28 @@ def build_mesh(geometry: Geometry) -> trimesh.Trimesh | VoxelHull:
         hull = voxelize(mesh, pitch, close_gaps=broken_single_body)
         hull.metadata["warnings"] = notes
         if geometry.origin == "buoyancy":
-            hull.apply_translation(-hull.center_mass)
+            shift = -hull.center_mass
+            hull.apply_translation(shift)
+            parts = _shifted(parts, shift)
+        hull.metadata["cad_parts"] = parts
         return hull
     mesh.metadata["warnings"] = notes
     if mesh.volume < 0:
         mesh.invert()  # inward-facing normals give a negative volume
     if geometry.origin == "buoyancy":
-        mesh.apply_translation(-np.asarray(mesh.center_mass))
+        shift = -np.asarray(mesh.center_mass)
+        mesh.apply_translation(shift)
+        parts = _shifted(parts, shift)
+    mesh.metadata["cad_parts"] = parts
     return mesh
+
+
+def _shifted(parts, offset):
+    if not parts:
+        return parts
+    from robomodel.mass_parts import translate
+
+    return translate(parts, offset)
 
 
 def _clean(mesh: trimesh.Trimesh) -> tuple[trimesh.Trimesh, list[str]]:
@@ -101,19 +116,27 @@ def _load_file(geometry: Geometry) -> trimesh.Trimesh:
     try:
         # STEP: OpenCASCADE (cascadio) tessellates the solids and returns metres, so only an
         # explicit `unit:` in the vehicle file changes the scale.
-        mesh = trimesh.load(geometry.file, force="mesh")
+        loaded = trimesh.load(geometry.file)
     except Exception as e:  # trimesh raises many different types
         raise GeometryError(f"could not read {geometry.file}: {e}") from e
-    if not isinstance(mesh, trimesh.Trimesh) or len(mesh.faces) == 0:
-        raise GeometryError(f"{geometry.file} contains no triangles")
-    mesh.apply_scale(geometry.unit_scale)
     rotation = axes_matrix(geometry.axes)
     if any(geometry.rotate):
         rotation = _rpy_matrix(*np.radians(geometry.rotate)) @ rotation
-    if not np.allclose(rotation, np.eye(3)):
-        transform = np.eye(4)
-        transform[:3, :3] = rotation
-        mesh.apply_transform(transform)
+    transform = np.eye(4)
+    transform[:3, :3] = rotation * geometry.unit_scale
+    parts = []
+    if isinstance(loaded, trimesh.Scene):
+        if len(loaded.graph.nodes_geometry) > 1:  # an assembly: keep its parts for the mass
+            from robomodel.mass_parts import scene_parts
+
+            parts = scene_parts(loaded, transform)
+        mesh = loaded.to_mesh() if len(loaded.geometry) else None
+    else:
+        mesh = loaded
+    if not isinstance(mesh, trimesh.Trimesh) or len(mesh.faces) == 0:
+        raise GeometryError(f"{geometry.file} contains no triangles")
+    mesh.apply_transform(transform)
+    mesh.metadata["cad_parts"] = parts
     return mesh
 
 

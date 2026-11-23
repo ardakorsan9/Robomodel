@@ -37,6 +37,20 @@ speeds and turning rates need either the low/high range in simulation or one poo
 `robomodel calibrate`. Full reports: [REMUS 100](docs/dogrulama_remus100.md),
 [BlueROV2 Heavy](docs/dogrulama_bluerov2.md), [calibration](docs/dogrulama_kalibrasyon.md).
 
+## Where the mass sits
+
+The scale gives the total mass, not where it is. robomodel spreads it as well as the CAD allows:
+
+- **STEP assembly (recommended):** every part is kept separate and gets the density of its
+  likely material from its name (`LiPo_3S` → battery, `M3-SCREW` → steel, `foam_float` → foam,
+  English and Turkish keywords); the part masses are then scaled together to the weighed
+  total, so only the density *ratios* matter. If the parts would weigh far more or less than
+  the scale says, the report warns (wrong units, wrong mass, or parts drawn solid that are
+  hollow). On the BlueROV2 R4 STEP (459 parts) 56 % of the mass got its material from a part
+  name, and the guessed materials gave 12 kg against the vehicle's ~10 kg.
+- **Single body (STL):** uniform density (or skin, for boats), as before.
+- **Better still:** list heavy parts, or give a measured CG / inertia (`measured:`).
+
 ## Install
 
 Python 3.12+. Tested on Linux (Ubuntu 24.04 / WSL2). All dependencies are ordinary Python

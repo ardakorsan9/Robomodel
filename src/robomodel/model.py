@@ -369,7 +369,10 @@ def _build_aerial(vehicle: Vehicle, hull, props: MassProperties) -> VehicleModel
 
 
 def _aerial_warnings(vehicle, props, hov, hull) -> list[str]:
+    from robomodel import mass_parts
+
     out = list(getattr(hull, "metadata", {}).get("warnings", []))
+    out += mass_parts.warnings(props.distribution)
     extents = np.asarray(hull.extents)
     if extents.max() > 20 or extents.max() < 0.02:
         out.append(f"the drone is {extents.max():.3g} m across: check the file units (mm / m)")
@@ -393,7 +396,7 @@ def _aerial_warnings(vehicle, props, hov, hull) -> list[str]:
             f"{spins.count(1)} rotors spin cw and {spins.count(-1)} ccw: yaw is unbalanced, "
             "check the spin directions"
         )
-    if not vehicle.parts:
+    if not vehicle.parts and props.distribution is None:  # an assembly spreads it by part
         out.append(
             "no parts listed: the hull mass is spread over the CAD volume, which puts the "
             "inertia in the wrong place; list the battery and give motor_mass for the rotors"
@@ -412,7 +415,10 @@ def _aerial_warnings(vehicle, props, hov, hull) -> list[str]:
 
 
 def _surface_warnings(vehicle, props, fl, hull, sections) -> list[str]:
+    from robomodel import mass_parts
+
     out = list(getattr(hull, "metadata", {}).get("warnings", []))
+    out += mass_parts.warnings(props.distribution)
     extents = np.asarray(hull.extents)
     if extents.max() > 400 or extents.max() < 0.05:
         out.append(f"the vessel is {extents.max():.3g} m long: check the file units (mm / m)")
@@ -586,7 +592,10 @@ def _warnings(
     hull: trimesh.Trimesh,
     frame: bool = False,
 ) -> list[str]:
+    from robomodel import mass_parts
+
     out = list(getattr(hull, "metadata", {}).get("warnings", []))
+    out += mass_parts.warnings(props.distribution)
     extents = np.asarray(hull.extents)
     volume = float(statics.volume.value)
     density = vehicle.mass / volume if volume > 0 else np.inf
@@ -768,6 +777,11 @@ def report(model: VehicleModel) -> str:
         sig = ", ".join(f"{x:.2g}" for x in np.ravel(sigma))
         lines.append(f"  {label:<16}[{vals}] ± [{sig}] {param.unit} [{param.source.value}]")
 
+    if m.distribution is not None:
+        from robomodel.mass_parts import summary as parts_summary
+
+        lines += ["Mass over the CAD parts (material guessed from the part names)"]
+        lines += ["  " + x for x in parts_summary(m.distribution)] + [""]
     lines.append("Mass and statics")
     row("mass", m.mass)
     row("volume", s.volume)

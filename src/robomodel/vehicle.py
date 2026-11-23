@@ -43,7 +43,7 @@ ORIGINS = ("center", "buoyancy")
 HYDRODYNAMICS = ("auto", "slender", "frame")
 ADDED_MASS_METHODS = ("auto", "bem", "strip", "frame")
 AXIS_NAMES = ("x", "y", "z", "-x", "-y", "-z")
-HULL_MASS = ("auto", "solid", "shell")
+HULL_MASS = ("auto", "parts", "solid", "shell")
 
 
 def axes_matrix(axes: tuple[str, str, str]) -> np.ndarray:
@@ -105,9 +105,10 @@ class Geometry:
     # installed for box-like / odd hulls, else the enclosing ellipsoid), or force one of
     # "bem", "strip", "frame".
     added_mass: str = "auto"
-    # How the hull's own mass (total minus listed parts) is spread: "solid" (uniform over
-    # the volume), "shell" (uniform over the skin, like a boat hull) or "auto" (shell for
-    # surface vessels, solid otherwise).
+    # How the hull's own mass (total minus listed parts) is spread: "parts" (over the parts
+    # of a CAD assembly by their guessed material, mass_parts.py), "solid" (uniform over the
+    # volume), "shell" (uniform over the skin, like a boat hull) or "auto" (parts when the
+    # CAD is an assembly, else shell for surface vessels and solid otherwise).
     hull_mass: str = "auto"
 
 

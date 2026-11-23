@@ -19,6 +19,15 @@ uv sync
 - Tek parça kapalı gövde en iyisi. Çok parçalı açık kasa (ROV) da olur: "assembly" seçeneği.
 - Birimi bil (genelde mm).
 
+### Kütle nereye düşüyor?
+
+Terazi toplam kütleyi verir, kütlenin nerede olduğunu vermez. CAD'i **STEP montajı** olarak dışa
+aktarırsan robomodel her parçayı ayrı tutar. Parçanın adından malzemesini tahmin eder (örneğin
+"LiPo" → batarya, "screw/vida" → çelik, "foam/köpük" → köpük), parça kütlelerini hesaplar ve
+hepsini tarttığın toplam kütleye ölçekler. Senin ek bir şey girmen gerekmez. Parçalara anlamlı
+adlar vermek ("battery", "motor_mount" gibi) sonucu iyileştirir. Tek parça STL'de kütle eşit
+dağıtılır. En doğrusu yine ağır parçaları listelemek ya da ağırlık merkezini ölçmektir.
+
 ## 3. En kolay yol: web arayüzü
 
 ```bash
