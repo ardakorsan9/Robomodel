@@ -44,10 +44,33 @@ class Dynamics:
     current_ned: np.ndarray = field(default_factory=lambda: np.zeros(3))  # m/s, constant
     # d_lin / d_quad act at this point (the hull's centre), not at the body origin
     r_hydro: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    # Surface vessels: g(eta) = G (eta - eta_rest), roll from the GZ curve (roll_table rows:
+    # heel angle rad, roll restoring N m). None: fully submerged vehicle (W, B, r_g, r_b).
+    g_matrix: np.ndarray | None = None
+    eta_rest: np.ndarray = field(default_factory=lambda: np.zeros(6))
+    roll_table: np.ndarray = field(default_factory=lambda: np.zeros((2, 0)))
 
     @property
     def mass_matrix(self) -> np.ndarray:
         return self.m_rb + self.m_a
+
+    @property
+    def rest_state(self) -> np.ndarray:
+        """State at rest: floating position for a surface vessel, zero otherwise."""
+        return np.concatenate([self.eta_rest, np.zeros(6)])
+
+
+def restoring(dyn: Dynamics, eta: np.ndarray) -> np.ndarray:
+    """g(eta): hydrostatic restoring forces (the negative of gravity + buoyancy)."""
+    phi, theta = eta[3], eta[4]
+    if dyn.g_matrix is None:
+        return restoring_forces(phi, theta, dyn.weight, dyn.buoyancy, dyn.r_g, dyn.r_b)
+    d_eta = eta - dyn.eta_rest
+    g = dyn.g_matrix @ d_eta
+    if dyn.roll_table.shape[1]:  # large heel: the GZ curve instead of the slope GM
+        angles, moments = dyn.roll_table
+        g[3] += np.interp(phi, angles, moments) - dyn.g_matrix[3, 3] * d_eta[3]
+    return g
 
 
 def coriolis_matrix(m: np.ndarray, nu: np.ndarray) -> np.ndarray:
@@ -127,7 +150,7 @@ def state_derivative(
     m = dyn.mass_matrix
     if m_inv is None:
         m_inv = np.linalg.inv(m)
-    g = restoring_forces(phi, theta, dyn.weight, dyn.buoyancy, dyn.r_g, dyn.r_b)
+    g = restoring(dyn, eta)
     if np.any(dyn.current_ned):
         nu_r, nu_c_dot = relative_velocity(dyn, state)
         rhs = (
@@ -169,7 +192,7 @@ def simulate(
     tau: constant generalised force (6,), or a function tau(t, state), or None for zero.
     fin_deflection: constant deflection (rad) of each control fin.
     """
-    state0 = np.zeros(12) if state0 is None else np.asarray(state0, dtype=float)
+    state0 = dyn.rest_state if state0 is None else np.asarray(state0, dtype=float)
     if tau is None:
         tau = np.zeros(6)
     if callable(tau):

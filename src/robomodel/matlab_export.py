@@ -107,7 +107,17 @@ nu_h = H * nu_r;
 D = H' * (p.D_lin .* nu_h + p.D_quad .* abs(nu_h) .* nu_h) + abs(nu_r(1)) * p.D_fin * nu_r;
 delta = max(min(p.delta, p.fin_max), -p.fin_max);   % fin stall: hold at max angle
 tau_fin = nu_r(1) * abs(nu_r(1)) * p.B_fin * delta;   % control fins
-g = restoring(phi, theta, p);
+if p.surface
+    d_eta = eta - p.eta_rest(:);
+    g = p.G * d_eta;
+    if ~isempty(p.roll_table)   % large heel: righting moment from the GZ curve
+        g(4) = g(4) + interp1(p.roll_table(1, :), p.roll_table(2, :), ...
+               min(max(phi, p.roll_table(1, 1)), p.roll_table(1, end))) ...
+               - p.G(4, 4) * d_eta(4);
+    end
+else
+    g = restoring(phi, theta, p);
+end
 nu_dot = M \\ (tau(:) + tau_fin - C - D - g + p.M_A * nu_c_dot);
 eta_dot = [Rzyx(phi, theta, psi) * nu(1:3); Tzyx(phi, theta) * nu(4:6)];
 xdot = [eta_dot; nu_dot];
@@ -191,7 +201,7 @@ end
         f"""%{name.upper()}_EXAMPLE  Simulate '{model.vehicle.name}' and check it against robomodel.
 p = {name}_params();
 {input_line}
-x0 = zeros(12, 1);
+x0 = {_mat(dyn.rest_state.reshape(-1, 1))};   % at rest (floating position for a boat)
 opts = odeset('RelTol', 1e-8, 'AbsTol', 1e-10);
 times = 0:{EXAMPLE_DT:g}:{EXAMPLE_TIME:g};
 [t, x] = ode45(@(t, x) robomodel_dynamics(t, x, tau, p), times, x0, opts);
@@ -266,13 +276,27 @@ p.delta = zeros({dyn.b_fin.shape[1]}, 1);   % control fin deflections (rad): {fi
 p.dead_band = {_mat([[t.dead_band for t in thr]]) if thr else "zeros(1, 0)"};   % command fraction
 p.current_ned = {_mat(dyn.current_ned.reshape(-1, 1))};   % constant water current, m/s (NED)
 p.r_hydro = {_mat(dyn.r_hydro.reshape(-1, 1))};   % hull centre: D_lin, D_quad act here, m
-end
+{_surface_params(dyn)}end
+"""
+
+
+def _surface_params(dyn) -> str:
+    if dyn.g_matrix is None:
+        # fields exist in both cases so Simulink code generation sees the same struct
+        return (
+            "p.surface = false;   % fully submerged: restoring from W, B, r_g, r_b\n"
+            "p.eta_rest = zeros(6, 1);\np.G = zeros(6);\np.roll_table = zeros(2, 0);\n"
+        )
+    return f"""p.surface = true;   % floating vessel: g = G * (eta - eta_rest), roll from roll_table
+p.eta_rest = {_mat(dyn.eta_rest.reshape(-1, 1))};   % floating at rest [x y z phi theta psi]
+p.G = {_mat(dyn.g_matrix)};   % hydrostatic stiffness about the rest position
+p.roll_table = {_mat(dyn.roll_table)};   % heel (rad); roll restoring (N m)
 """
 
 
 def _save_linear(model: VehicleModel, speed: float, path: Path) -> None:
     dyn = model.dynamics()
-    state0 = np.zeros(12)
+    state0 = dyn.rest_state.copy()
     state0[6] = speed
     tau0 = np.zeros(6)
     tau0[0] = dyn.d_lin[0] * speed + dyn.d_quad[0] * speed**2  # force to hold the speed
@@ -299,8 +323,10 @@ add_block('simulink/User-Defined Functions/MATLAB Function', [mdl '/dynamics'], 
 chart = find(sfroot, '-isa', 'Stateflow.EMChart', 'Path', [mdl '/dynamics']);
 chart.Script = sprintf(['function xdot = dynamics(x, tau)\\n%%#codegen\\n' ...
     'p = {name}_params();\\nxdot = robomodel_dynamics(0, x, tau, p);\\nend\\n']);
+p0 = {name}_params();
+x0 = [p0.eta_rest(:); zeros(6, 1)];   % at rest (floating position for a boat)
 add_block('simulink/Continuous/Integrator', [mdl '/state'], ...
-    'InitialCondition', 'zeros(12, 1)', 'Position', [280 55 310 85]);
+    'InitialCondition', mat2str(x0, 17), 'Position', [280 55 310 85]);
 add_block('simulink/Sinks/Out1', [mdl '/x'], 'Position', [370 63 400 77]);
 add_line(mdl, 'tau/1', 'dynamics/2');
 add_line(mdl, 'state/1', 'dynamics/1', 'autorouting', 'on');

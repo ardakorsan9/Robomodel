@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-CATEGORIES = ("underwater",)
+CATEGORIES = ("underwater", "surface")
 WATER_DENSITY = {"sea": 1025.0, "fresh": 1000.0}  # kg/m^3
 
 # Primitive shapes and the dimensions each one needs (all in metres).
@@ -21,6 +21,10 @@ PRIMITIVES = {
     "ellipsoid": ("a", "b", "c"),  # semi-axes along x, y, z
     "cylinder": ("length", "radius"),  # axis along x
     "myring": ("a", "b", "c", "d", "n", "theta"),  # REMUS-style hull, see Prestero 2001
+    "box": ("length", "width", "height"),  # along x, y, z (a barge)
+    # Wigley test hull: y = B/2 (1 - (2x/L)^2)(1 - (z/T)^2) below the design waterline,
+    # wall-sided above it up to the deck (depth = keel to deck)
+    "wigley": ("length", "beam", "draft", "depth"),
 }
 # Optional dimensions and their defaults.
 OPTIONAL_DIMS = {"myring": {"a_offset": 0.0, "c_offset": 0.0}}
@@ -28,6 +32,7 @@ ORIGINS = ("center", "buoyancy")
 HYDRODYNAMICS = ("auto", "slender", "frame")
 ADDED_MASS_METHODS = ("auto", "bem", "strip", "frame")
 AXIS_NAMES = ("x", "y", "z", "-x", "-y", "-z")
+HULL_MASS = ("auto", "solid", "shell")
 
 
 def axes_matrix(axes: tuple[str, str, str]) -> np.ndarray:
@@ -89,6 +94,10 @@ class Geometry:
     # installed for box-like / odd hulls, else the enclosing ellipsoid), or force one of
     # "bem", "strip", "frame".
     added_mass: str = "auto"
+    # How the hull's own mass (total minus listed parts) is spread: "solid" (uniform over
+    # the volume), "shell" (uniform over the skin, like a boat hull) or "auto" (shell for
+    # surface vessels, solid otherwise).
+    hull_mass: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -341,6 +350,10 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
     ):
         problems.append("'geometry.voxel' must be in millimetres, 0.5-50")
         return None
+    hull_mass = raw.get("hull_mass", "auto")
+    if hull_mass not in HULL_MASS:
+        problems.append(f"'geometry.hull_mass' must be one of {list(HULL_MASS)}")
+        return None
     rotate = raw.get("rotate", [0, 0, 0])
     if (
         not isinstance(rotate, list)
@@ -357,6 +370,7 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
         assembly=assembly,
         voxel=float(voxel_mm) / 1000,
         hydrodynamics=hydro,
+        hull_mass=hull_mass,
     )
 
     if has_file:

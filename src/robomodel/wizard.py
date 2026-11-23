@@ -67,7 +67,7 @@ def _metrics(model: VehicleModel, dyn: Dynamics, thrust_scale: float = 1.0) -> d
         def tau(_t, x):
             return np.array([hold + 50.0 * (speed - x[6]), 0, 0, 0, 0, 0])
 
-        state0 = np.zeros(12)
+        state0 = dyn.rest_state.copy()
         state0[6] = speed
         traj = simulate(
             dyn,

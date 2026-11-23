@@ -179,7 +179,56 @@ def _z_axis_to_x(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     return mesh
 
 
+def _box(length: float, width: float, height: float) -> trimesh.Trimesh:
+    return trimesh.creation.box([length, width, height])
+
+
+WIGLEY_STATIONS = 161
+WIGLEY_GIRTH = 81  # points down each side, keel to deck
+
+
+def _wigley(length: float, beam: float, draft: float, depth: float) -> trimesh.Trimesh:
+    """Wigley hull, the classic towing-tank test form; centred on its bounding box.
+
+    Below the design waterline: C_B = 4/9, C_WP = 2/3, KB = 5T/8, BM = 3 B^2 / (35 T).
+    """
+    if depth < draft:
+        raise GeometryError("wigley: depth (keel to deck) must be at least the draft")
+    xs = np.linspace(-length / 2, length / 2, WIGLEY_STATIONS)
+    # z down, 0 at the design waterline: keel at +draft, deck at draft - depth
+    freeboard = depth - draft
+    zs = np.concatenate(
+        [
+            np.linspace(-freeboard, 0.0, max(2, int(WIGLEY_GIRTH * freeboard / depth) + 1))[:-1],
+            draft * np.sin(np.linspace(0.0, np.pi / 2, WIGLEY_GIRTH)),  # finer near the keel
+        ]
+    )
+    width = 1 - (2 * xs / length) ** 2
+    below = np.where(zs > 0, 1 - (zs / draft) ** 2, 1.0)
+    half = beam / 2 * np.outer(width, below)  # (stations, girth)
+    # one ring per station: starboard deck -> keel -> port deck (the deck closes the ring)
+    ys = np.concatenate([half, -half[:, -2::-1]], axis=1)
+    zz = np.concatenate([zs, zs[-2::-1]])
+    n_ring = ys.shape[1]
+    verts = np.stack([np.repeat(xs, n_ring), ys.ravel(), np.tile(zz, WIGLEY_STATIONS)], axis=1)
+    faces = []
+    for i in range(WIGLEY_STATIONS - 1):
+        a, b = i * n_ring, (i + 1) * n_ring
+        for j in range(n_ring):
+            k = (j + 1) % n_ring
+            faces += [[a + j, b + j, b + k], [a + j, b + k, a + k]]
+    mesh = trimesh.Trimesh(verts, np.array(faces), process=False)
+    mesh.merge_vertices(digits_vertex=12)
+    mesh.update_faces(mesh.nondegenerate_faces())
+    mesh.remove_unreferenced_vertices()
+    trimesh.repair.fix_normals(mesh)
+    mesh.apply_translation(-mesh.bounds.mean(axis=0))
+    return mesh
+
+
 _PRIMITIVE_BUILDERS = {
+    "box": _box,
+    "wigley": _wigley,
     "sphere": _sphere,
     "ellipsoid": _ellipsoid,
     "cylinder": _cylinder,

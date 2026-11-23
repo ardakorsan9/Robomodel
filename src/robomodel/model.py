@@ -49,6 +49,7 @@ class VehicleModel:
     body_lift: Parameter | None = None  # 6x6, multiply by |u|; None for stubby hulls
     r_hydro: np.ndarray = field(default_factory=lambda: np.zeros(3))  # hull centre, m
     warnings: list[str] = field(default_factory=list)
+    floating: object | None = None  # surface.Floating for surface vessels
 
     def dynamics(self) -> Dynamics:
         return Dynamics(
@@ -67,17 +68,75 @@ class VehicleModel:
             fin_max=self.fins.max_angles,
             current_ned=np.asarray(self.vehicle.current, dtype=float),
             r_hydro=np.asarray(self.r_hydro, dtype=float),
+            **self._surface_terms(),
         )
+
+    def _surface_terms(self) -> dict:
+        fl = self.floating
+        if fl is None:
+            return {}
+        return {
+            "g_matrix": fl.g_matrix,
+            "eta_rest": fl.eta_rest,
+            "roll_table": np.vstack([fl.gz_angle, fl.roll_moment]),
+        }
 
 
 def build_model(vehicle: Vehicle) -> VehicleModel:
     hull = build_mesh(vehicle.geometry)
-    sections = slice_hull(hull)
     props = mass_properties(vehicle, hull)
+    if vehicle.category == "surface":
+        return _build_surface(vehicle, hull, props)
+    sections = slice_hull(hull)
     statics = hydrostatics(hull, props.mass, vehicle.water_density, vehicle.measured.volume)
     rho = vehicle.water_density
+    hydro = _hydrodynamics(vehicle.geometry, hull, sections, rho)
+    damping = hydro.damping
+    fins = fin_model(vehicle.fins, rho)
+    model = VehicleModel(
+        vehicle=vehicle,
+        hull=hull,
+        sections=sections,
+        mass=props,
+        statics=statics,
+        m_rb=rigid_body_mass_matrix(props),
+        m_a=_with_fins(hydro.m_a, fins, vehicle),
+        damping=damping,
+        b_thr=allocation_matrix(vehicle.thrusters),
+        fins=fins,
+        body_lift=hydro.body_lift,
+        r_hydro=hydro.centre,
+        warnings=_warnings(vehicle, props, statics, hull, hydro.frame),
+    )
+    if not vehicle.calibration.is_identity:
+        model = apply_calibration(model, vehicle.calibration)
+    return model
 
-    g = vehicle.geometry
+
+@dataclass(frozen=True)
+class _Hydro:
+    m_a: Parameter  # about the body origin
+    damping: Damping  # at `centre`
+    body_lift: Parameter | None
+    centre: np.ndarray
+    frame: bool
+
+
+def _with_fins(m_a: Parameter, fins: FinModel, vehicle: Vehicle) -> Parameter:
+    if not vehicle.fins:
+        return m_a
+    # fin added mass adds to the hull's, with the hull's uncertainty
+    return Parameter(
+        m_a.value + fins.m_a,
+        m_a.sigma + 0.3 * np.abs(fins.m_a),
+        m_a.source,
+        m_a.unit,
+        m_a.note + "; fins as flat plates",
+    )
+
+
+def _hydrodynamics(g, hull, sections: Sections, rho: float) -> _Hydro:
+    """Added mass, damping and body lift of a hull moving in infinite fluid."""
     frame = _uses_frame_method(g, sections, hull)
     # Hull hydrodynamics are computed about the hull's own centre, then moved to the body
     # origin. The result does not depend on where the CAD file has its origin.
@@ -119,17 +178,7 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
             part = _move_parameter(
                 strip_theory_parameter(replace(s, x=s.x - c[0]), float(body.volume), rho), c
             )
-            total = (
-                part
-                if total is None
-                else Parameter(
-                    total.value + part.value,
-                    total.sigma + part.sigma,
-                    part.source,
-                    part.unit,
-                    part.note,
-                )
-            )
+            total = part if total is None else _add(total, part)
         m_a = Parameter(
             total.value,
             total.sigma,
@@ -154,33 +203,143 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
         damping = combine_damping(parts, centre)
     else:
         damping = estimate_damping(local, rho)
+    lift = None if frame else _body_lift_all(bodies, sections, hull, rho, centre)
+    return _Hydro(m_a, damping, lift, centre, frame)
+
+
+def _add(a: Parameter, b: Parameter) -> Parameter:
+    return Parameter(a.value + b.value, a.sigma + b.sigma, b.source, b.unit, b.note)
+
+
+def _half(p: Parameter | None, note: str) -> Parameter | None:
+    if p is None:
+        return None
+    value = 0.5 * np.asarray(p.value)
+    return Parameter(value, 0.5 * np.asarray(p.sigma), p.source, p.unit, _join(p.note, note))
+
+
+def _join(a: str, b: str) -> str:
+    return f"{a}; {b}" if a else b
+
+
+# Linear heave / roll / pitch damping of a floating hull (wave radiation, bilge eddies) as a
+# share of critical damping. Typical monohull values (Fossen 2021, ch. 7; Journee & Massie,
+# Offshore Hydromechanics, ch. 6), assumed; roll is lightly damped without bilge keels.
+SURFACE_DAMPING_RATIO = {2: 0.2, 3: 0.05, 4: 0.2}
+SURFACE_FROUDE_LIMIT = 0.3  # above this the wave-making resistance is not in the model
+
+
+def _build_surface(vehicle: Vehicle, hull, props: MassProperties) -> VehicleModel:
+    """Surface vessel: float the hull, then treat the wet part and its mirror image in the
+    water surface as one body in infinite fluid and take half (see surface.double_body)."""
+    from robomodel.surface import double_body, floating
+
+    rho = vehicle.water_density
+    fl = floating(hull, vehicle.mass, np.asarray(props.r_g.value), rho)
+    wet = double_body(hull, fl)
+    sections = slice_hull(wet)
+    g = replace(
+        vehicle.geometry,
+        primitive=None,
+        assembly=vehicle.geometry.assembly and isinstance(wet, VoxelHull),
+    )
+    hydro = _hydrodynamics(g, wet, sections, rho)
+    note = "wet hull + mirror image in the water surface, halved"
+    m_a = _half(hydro.m_a, note)
     fins = fin_model(vehicle.fins, rho)
-    if vehicle.fins:  # fin added mass adds to the hull's, with the hull's uncertainty
-        m_a = Parameter(
-            m_a.value + fins.m_a,
-            m_a.sigma + 0.3 * np.abs(fins.m_a),
-            m_a.source,
-            m_a.unit,
-            m_a.note + "; fins as flat plates",
-        )
+    m_a = _with_fins(m_a, fins, vehicle)
+    m_rb = rigid_body_mass_matrix(props)
+
+    d = hydro.damping
+    quad = _half(d.quadratic, note + "; no wave-making resistance")
+    lin_value = 0.5 * np.asarray(d.linear.value, dtype=float)
+    m_total = m_rb + np.asarray(m_a.value)
+    for i, zeta in SURFACE_DAMPING_RATIO.items():
+        k = fl.g_matrix[i, i]
+        if k > 0:
+            lin_value[i] = 2 * zeta * np.sqrt(m_total[i, i] * k)
+    linear = Parameter(
+        lin_value,
+        lin_value * 1.0,
+        Source.ASSUMED,
+        d.linear.unit,
+        "surge/sway/yaw: quadratic x reference speed; heave/roll/pitch: typical share of "
+        f"critical damping {SURFACE_DAMPING_RATIO[2]}/{SURFACE_DAMPING_RATIO[3]}/"
+        f"{SURFACE_DAMPING_RATIO[4]}, assumed",
+    )
+    damping = replace(d, linear=linear, quadratic=quad)
+
+    weight = props.mass.value * 9.80665
+    rel = props.mass.sigma / props.mass.value
+    statics = Hydrostatics(
+        volume=Parameter.relative(fl.volume, rel, Source.CAD, "m^3", "floating: volume = m / rho"),
+        r_b=Parameter(
+            np.asarray(fl.r_b), np.full(3, 0.005 * float(max(hull.extents))), Source.CAD, "m"
+        ),
+        weight=Parameter(weight, props.mass.sigma * 9.80665, props.mass.source, "N"),
+        buoyancy=Parameter(weight, props.mass.sigma * 9.80665, Source.CAD, "N", "floats: B = W"),
+    )
     model = VehicleModel(
         vehicle=vehicle,
         hull=hull,
         sections=sections,
         mass=props,
         statics=statics,
-        m_rb=rigid_body_mass_matrix(props),
+        m_rb=m_rb,
         m_a=m_a,
         damping=damping,
         b_thr=allocation_matrix(vehicle.thrusters),
         fins=fins,
-        body_lift=None if frame else _body_lift_all(bodies, sections, hull, rho, centre),
-        r_hydro=centre,
-        warnings=_warnings(vehicle, props, statics, hull, frame),
+        body_lift=_half(hydro.body_lift, note),
+        r_hydro=hydro.centre,
+        warnings=_surface_warnings(vehicle, props, fl, hull, sections),
+        floating=fl,
     )
     if not vehicle.calibration.is_identity:
         model = apply_calibration(model, vehicle.calibration)
     return model
+
+
+def _surface_warnings(vehicle, props, fl, hull, sections) -> list[str]:
+    out = list(getattr(hull, "metadata", {}).get("warnings", []))
+    extents = np.asarray(hull.extents)
+    if extents.max() > 400 or extents.max() < 0.05:
+        out.append(f"the vessel is {extents.max():.3g} m long: check the file units (mm / m)")
+    if extents[0] < 0.9 * extents.max():
+        axis = "xyz"[int(np.argmax(extents))]
+        out.append(
+            f"the hull is longest along body {axis}, not x (forward): rotate the CAD export so "
+            "the bow points along +x"
+        )
+    if vehicle.measured.volume is not None:
+        out.append("measured.volume is ignored for a surface vessel: it floats at V = m / rho")
+    if vehicle.measured.r_g is None:
+        spread = "spread over its skin" if "skin" in props.r_g.note else "uniform"
+        out.append(
+            "stability (GM) depends on the height of the centre of gravity: list heavy parts "
+            f"or measure it (inclining test, measured.r_g); here the hull mass is {spread}"
+        )
+    if abs(np.degrees(fl.trim)) > 3:
+        out.append(
+            f"the vessel trims {np.degrees(fl.trim):+.1f} deg at rest (+ = bow up): move weight "
+            "or check the CG; added mass assumes a nearly level hull"
+        )
+    if abs(np.degrees(fl.heel)) > 1:
+        out.append(
+            f"the vessel heels {np.degrees(fl.heel):+.1f} deg at rest: CG off the centreline?"
+        )
+    if fl.freeboard < 0.05 * extents[0]:
+        out.append(f"small freeboard ({100 * fl.freeboard:.1f} cm): waves will wash over the deck")
+    v_max = SURFACE_FROUDE_LIMIT * np.sqrt(9.80665 * sections.length)
+    out.append(
+        f"resistance is valid up to about {v_max:.2g} m/s (Froude 0.3); faster, wave-making "
+        "and planing are not modelled and the resistance comes out too low"
+    )
+    if not vehicle.thrusters:
+        out.append("no thrusters: the model has no control inputs")
+    elif any(t.preset for t in vehicle.thrusters):
+        out.append("thrust limits come from a preset; measure them or give max_forward/max_reverse")
+    return out
 
 
 def _count_bodies(hull, min_share: float = 0.05) -> int:
@@ -411,6 +570,15 @@ def to_dict(model: VehicleModel) -> dict:
         "B_fin": np.round(model.fins.b_fin, 12).tolist(),
         "fin_controls": list(model.fins.control_names),
         "D_body_lift": _p(model.body_lift) if model.body_lift is not None else None,
+        "floating": None
+        if model.floating is None
+        else {
+            "eta_rest": model.floating.eta_rest.tolist(),
+            "G": np.round(model.floating.g_matrix, 9).tolist(),
+            "gz_angle_rad": model.floating.gz_angle.tolist(),
+            "roll_restoring_Nm": model.floating.roll_moment.tolist(),
+            "summary": floating_summary(model),
+        },
         "warnings": model.warnings,
         "checks": [
             {"name": c.name, "status": c.status, "detail": c.detail}
@@ -421,6 +589,28 @@ def to_dict(model: VehicleModel) -> dict:
         "provenance": __import__("robomodel.provenance", fromlist=["provenance"]).provenance(
             model.vehicle
         ),
+    }
+
+
+def floating_summary(model: VehicleModel) -> dict[str, str]:
+    """Plain-text hydrostatics of a surface vessel, for reports."""
+    from robomodel.checks import _vanishing_angle
+    from robomodel.surface import natural_periods
+
+    fl = model.floating
+    periods = natural_periods(model.m_rb + np.asarray(model.m_a.value), fl.g_matrix)
+    rel = fl.gz_angle - fl.heel
+    gz = {a: float(np.interp(np.radians(a), rel, fl.gz)) for a in (10, 20, 30, 45, 60)}
+    return {
+        "origin depth z0": f"{fl.depth:+.4g} m (body origin below the water surface)",
+        "draft": f"{fl.draft:.4g} m (deepest point)",
+        "freeboard": f"{fl.freeboard:.4g} m (highest point above water)",
+        "trim, heel": f"{np.degrees(fl.trim):+.2f} deg (bow up), {np.degrees(fl.heel):+.2f} deg",
+        "waterplane": f"{fl.waterplane_area:.4g} m^2",
+        "GM_T, GM_L": f"{fl.gm_t:.4g} m, {fl.gm_l:.4g} m",
+        "GZ": ", ".join(f"{a} deg {v:.3g} m" for a, v in gz.items()),
+        "stable up to": f"{_vanishing_angle(rel, fl.roll_moment):.0f} deg heel",
+        "periods": ", ".join(f"{k} {v:.3g} s" for k, v in periods.items()) + " (undamped)",
     }
 
 
@@ -454,6 +644,9 @@ def report(model: VehicleModel) -> str:
     row("CG r_g", m.r_g)
     row("CB r_b", s.r_b)
     row("I_g diag", m.inertia_g, diag=True)
+    if model.floating is not None:
+        lines += ["", "Floating (surface vessel; eta at rest = [0, 0, z0, heel, trim, 0])"]
+        lines += [f"  {k:<16}{v}" for k, v in floating_summary(model).items()]
     lines += ["", "Hydrodynamics (order: surge, sway, heave, roll, pitch, yaw)"]
     row("M_A diag", model.m_a, diag=True)
     row("D linear", d.linear)

@@ -143,8 +143,9 @@ def _input_function(model: VehicleModel, log: Log):
     return tau
 
 
-def initial_state(log: Log) -> np.ndarray:
-    state = np.zeros(12)
+def initial_state(log: Log, rest: np.ndarray | None = None) -> np.ndarray:
+    """Logged first values; states not in the log start at rest (floating position)."""
+    state = np.zeros(12) if rest is None else np.array(rest, dtype=float)
     for i, name in enumerate(STATES):
         if name in log.states:
             state[i] = log.states[name][0]
@@ -164,7 +165,7 @@ def simulate_log(model: VehicleModel, log: Log, rtol: float = 1e-6) -> np.ndarra
     sol = solve_ivp(
         rhs,
         (log.t[0], log.t[-1]),
-        initial_state(log),
+        initial_state(log, dyn.rest_state),
         t_eval=log.t,
         rtol=rtol,
         atol=1e-8,

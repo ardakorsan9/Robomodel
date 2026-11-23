@@ -67,9 +67,15 @@ def mass_properties(vehicle: Vehicle, hull: trimesh.Trimesh) -> MassProperties:
     parts_mass = sum(p.mass for p in vehicle.parts)
     hull_mass = vehicle.mass - parts_mass
 
-    # Hull: uniform solid. trimesh gives the inertia about the hull centroid for density 1.
-    hull_centroid = np.asarray(hull.center_mass)
-    hull_inertia_c = np.asarray(hull.moment_inertia) * (hull_mass / hull.volume)
+    shell = vehicle.geometry.hull_mass == "shell" or (
+        vehicle.geometry.hull_mass == "auto" and vehicle.category == "surface"
+    )
+    if shell and isinstance(hull, trimesh.Trimesh):
+        hull_centroid, hull_inertia_c = shell_properties(hull, hull_mass)
+    else:
+        # Uniform solid. trimesh gives the inertia about the centroid for density 1.
+        hull_centroid = np.asarray(hull.center_mass)
+        hull_inertia_c = np.asarray(hull.moment_inertia) * (hull_mass / hull.volume)
 
     first_moment = hull_mass * hull_centroid
     inertia_o = hull_inertia_c + point_inertia(hull_mass, hull_centroid)
@@ -91,8 +97,9 @@ def mass_properties(vehicle: Vehicle, hull: trimesh.Trimesh) -> MassProperties:
     hull_share = hull_mass / vehicle.mass
     # per axis: a hull cannot hide its CG further than its own size along that axis
     cog_sigma = UNIFORM_COG_SIGMA_FRACTION * np.asarray(hull.extents, dtype=float) * hull_share
+    spread = "over the hull skin" if shell and isinstance(hull, trimesh.Trimesh) else "uniform"
     note = (
-        f"hull mass {hull_mass:.3g} kg assumed uniform; list heavy parts to improve this"
+        f"hull mass {hull_mass:.3g} kg assumed {spread}; list heavy parts to improve this"
         if hull_share > 0
         else "all mass given as parts"
     )
@@ -117,6 +124,23 @@ def mass_properties(vehicle: Vehicle, hull: trimesh.Trimesh) -> MassProperties:
         inertia_o=inertia_param(inertia_o, inertia_measured),
         inertia_g=inertia_param(inertia_g, inertia_measured),
     )
+
+
+def shell_properties(mesh: trimesh.Trimesh, mass: float) -> tuple[np.ndarray, np.ndarray]:
+    """Centroid and inertia about it of `mass` spread evenly over the mesh surface.
+
+    Exact for thin triangles: int r r^T dA = A/12 (sum v_i v_i^T + s s^T), s = sum v_i.
+    """
+    tri = mesh.vertices[mesh.faces]
+    area = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
+    total = area.sum()
+    centroid = (area @ tri.mean(axis=1)) / total
+    rel = tri - centroid
+    s = rel.sum(axis=1)
+    second = np.einsum("k,kij,kil->jl", area, rel, rel) + np.einsum("k,ki,kl->il", area, s, s)
+    second *= mass / total / 12  # int r r^T dm
+    inertia = np.trace(second) * np.eye(3) - second
+    return centroid, inertia
 
 
 def rigid_body_mass_matrix(props: MassProperties) -> np.ndarray:

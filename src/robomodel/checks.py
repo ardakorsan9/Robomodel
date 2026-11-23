@@ -89,13 +89,17 @@ def run_checks(dyn: Dynamics, speed: float = 1.0) -> list[Check]:
     )
 
     # Free motion without gravity/buoyancy effects: kinetic energy must not grow.
-    free = replace(dyn, weight=dyn.buoyancy, r_g=dyn.r_b.copy())
+    surface = dyn.g_matrix is not None
+    if surface:
+        free = replace(dyn, g_matrix=np.zeros((6, 6)), roll_table=np.zeros((2, 0)))
+    else:
+        free = replace(dyn, weight=dyn.buoyancy, r_g=dyn.r_b.copy())
     # Random velocities of the hull centre, moved to the origin: a far-away CAD origin
     # must not turn small rotations into huge hull speeds.
     nu0 = np.linalg.solve(velocity_transform(dyn.r_hydro), rng.normal(size=6) * scales * 0.3)
     try:
         traj = simulate(
-            free, 5.0, state0=np.concatenate([np.zeros(6), nu0]), dt_out=0.1, rtol=1e-7, atol=1e-9
+            free, 5.0, state0=np.concatenate([dyn.eta_rest, nu0]), dt_out=0.1, rtol=1e-7, atol=1e-9
         )
         energy = 0.5 * np.einsum("ij,jk,ik->i", traj.nu, free.mass_matrix, traj.nu)
         grows = float(np.max(np.diff(energy)) / max(energy[0], 1e-12))
@@ -104,25 +108,12 @@ def run_checks(dyn: Dynamics, speed: float = 1.0) -> list[Check]:
         grows, detail = np.inf, f"simulation failed: {e}"
     out.append(Check("free motion loses energy (simulation)", OK if grows < 1e-6 else FAIL, detail))
 
-    bg = dyn.r_g[2] - dyn.r_b[2]  # z down: CG below CB means bg > 0
-    out.append(
-        Check(
-            "self-righting in roll and pitch (CG below CB)",
-            OK if bg > 1e-4 else WARN,
-            f"metacentric height BG_z = {100 * bg:.2f} cm"
-            + ("" if bg > 1e-4 else ": the vehicle will not return upright by itself"),
-        )
-    )
-    net = (dyn.buoyancy - dyn.weight) / dyn.weight
-    out.append(
-        Check(
-            "near neutral buoyancy (within 5 %)",
-            OK if abs(net) < 0.05 else WARN,
-            f"net buoyancy {100 * net:+.1f} % of weight",
-        )
-    )
+    if surface:
+        out += _floating_checks(dyn)
+    else:
+        out += _submerged_checks(dyn)
 
-    a, _ = linearize(dyn, np.zeros(12), np.zeros(6))
+    a, _ = linearize(dyn, dyn.rest_state, np.zeros(6))
     vel = np.linalg.eigvals(a[6:, 6:])
     worst = float(np.max(vel.real))
     out.append(
@@ -132,11 +123,13 @@ def run_checks(dyn: Dynamics, speed: float = 1.0) -> list[Check]:
             f"largest real part {worst:.3g} 1/s",
         )
     )
-    state = np.zeros(12)
+    state = dyn.rest_state.copy()
     state[6] = speed
     tau0 = np.zeros(6)
     tau0[0] = dyn.d_lin[0] * speed + dyn.d_quad[0] * speed**2
     a, _ = linearize(dyn, state, tau0)
+    # Only velocities: a floating vessel's heave/roll/pitch springs give oscillation, which
+    # the velocity block alone does not see; drift in yaw is what needs a controller.
     worst = float(np.max(np.linalg.eigvals(a[6:, 6:]).real))
     out.append(
         Check(
@@ -158,6 +151,72 @@ def run_checks(dyn: Dynamics, speed: float = 1.0) -> list[Check]:
                 f"{rank} independent directions; forces/moments: {', '.join(dofs) or 'none'}",
             )
         )
+    return out
+
+
+def _floating_checks(dyn: Dynamics) -> list[Check]:
+    g, w = dyn.g_matrix, dyn.weight
+    gm_t, gm_l = g[3, 3] / w, g[4, 4] / w
+    out = [
+        Check(
+            "stable in roll (GM_T > 0)",
+            OK if gm_t > 1e-4 else FAIL,
+            f"transverse metacentric height GM_T = {100 * gm_t:.1f} cm"
+            + ("" if gm_t > 1e-4 else ": the vessel capsizes; lower the CG or widen the hull"),
+        ),
+        Check(
+            "stable in pitch (GM_L > 0)",
+            OK if gm_l > 1e-4 else FAIL,
+            f"longitudinal metacentric height GM_L = {gm_l:.2f} m",
+        ),
+    ]
+    if dyn.roll_table.shape[1]:
+        angles, moments = dyn.roll_table
+        phi0 = dyn.eta_rest[3]
+        vanish = _vanishing_angle(angles - phi0, moments)
+        out.append(
+            Check(
+                "righting moment over large heel (GZ curve)",
+                OK if vanish >= 50 else WARN,
+                f"positive up to {vanish:.0f} deg heel"
+                + ("" if vanish >= 50 else ": small range of stability, check freeboard and CG"),
+            )
+        )
+    return out
+
+
+def _vanishing_angle(rel_angles: np.ndarray, moments: np.ndarray) -> float:
+    """Smallest heel (either side) at which the righting moment stops being positive."""
+    worst = np.inf
+    for side in (1, -1):
+        sel = side * rel_angles > 1e-9
+        a, m = side * rel_angles[sel], side * moments[sel]
+        order = np.argsort(a)
+        a, m = a[order], m[order]
+        bad = np.flatnonzero(m <= 0)
+        worst = min(worst, np.degrees(a[bad[0]]) if bad.size else np.degrees(a[-1]))
+    return float(worst)
+
+
+def _submerged_checks(dyn: Dynamics) -> list[Check]:
+    out = []
+    bg = dyn.r_g[2] - dyn.r_b[2]  # z down: CG below CB means bg > 0
+    out.append(
+        Check(
+            "self-righting in roll and pitch (CG below CB)",
+            OK if bg > 1e-4 else WARN,
+            f"metacentric height BG_z = {100 * bg:.2f} cm"
+            + ("" if bg > 1e-4 else ": the vehicle will not return upright by itself"),
+        )
+    )
+    net = (dyn.buoyancy - dyn.weight) / dyn.weight
+    out.append(
+        Check(
+            "near neutral buoyancy (within 5 %)",
+            OK if abs(net) < 0.05 else WARN,
+            f"net buoyancy {100 * net:+.1f} % of weight",
+        )
+    )
     return out
 
 

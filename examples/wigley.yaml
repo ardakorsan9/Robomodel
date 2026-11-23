@@ -1,0 +1,19 @@
+# Wigley hull (classic towing-tank form), 4 m long, as a small electric USV.
+# Below the 0.25 m design waterline: C_B = 4/9, C_WP = 2/3, KB = 5T/8, BM = 3B^2/(35T).
+# Mass = 1025 * 4/9 * L * B * T so that it floats at the design waterline.
+name: wigley_usv
+category: surface
+mass: 182.2          # kg
+water: sea
+geometry:
+  primitive: wigley
+  length: 4.0
+  beam: 0.4
+  draft: 0.25
+  depth: 0.4         # keel to deck
+measured:
+  r_g: [0.0, 0.0, 0.0]   # CG height at the box centre (0.2 m above the keel), from a
+                         # weighed loading list; set this for your own boat
+thrusters:
+  - {model: T200, position: [-1.9, 0.08, 0.15], direction: [1, 0, 0]}
+  - {model: T200, position: [-1.9, -0.08, 0.15], direction: [1, 0, 0]}

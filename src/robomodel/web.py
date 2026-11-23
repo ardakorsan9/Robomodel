@@ -207,10 +207,15 @@ def _behaviour(model) -> dict:
     from robomodel.model_range import model_range
     from robomodel.wizard import _metrics
 
-    keys = {"son hız": "top_speed", "dönüş hızı (5° dümen)": "turn_rate_fins",
-            "dönüş hızı (%50 itici)": "turn_rate_thrusters",
-            "dikey hız (%50 itici)": "vertical_speed", "yuvarlanma periyodu": "roll_period",
-            "yunuslama periyodu": "pitch_period", "net kaldırma": "net_buoyancy"}
+    keys = {
+        "son hız": "top_speed",
+        "dönüş hızı (5° dümen)": "turn_rate_fins",
+        "dönüş hızı (%50 itici)": "turn_rate_thrusters",
+        "dikey hız (%50 itici)": "vertical_speed",
+        "yuvarlanma periyodu": "roll_period",
+        "yunuslama periyodu": "pitch_period",
+        "net kaldırma": "net_buoyancy",
+    }
     out: dict = {}
     try:
         for label, variant in model_range(model).items():
@@ -310,9 +315,16 @@ def example() -> dict:
         "volume": round(306 / (1025 * 9.80665), 5),
         "fins": [dict(f, area_cm2=66.5, span_cm=8.57, control=True) for f in fins],
         # The REMUS propeller, as a thruster: ~15 N gives its 2.5 m/s top speed (estimate).
-        "thrusters": [{"name": "propeller", "position": [round(tail_x + 0.01, 4), 0, 0],
-                       "direction": "+x", "model": "REMUS prop", "max_forward": 15,
-                       "max_reverse": 8}],
+        "thrusters": [
+            {
+                "name": "propeller",
+                "position": [round(tail_x + 0.01, 4), 0, 0],
+                "direction": "+x",
+                "model": "REMUS prop",
+                "max_forward": 15,
+                "max_reverse": 8,
+            }
+        ],
     }
     return {"id": upload_id, "filename": "remus100_hull.stl", "spec": spec}
 

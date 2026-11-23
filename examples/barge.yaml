@@ -1,0 +1,13 @@
+# Box barge 10 x 4 x 2 m floating at 1 m draft: hydrostatics known by hand.
+# Draft T = m / (rho L B) = 1 m, KB = T/2, BM_T = B^2 / (12 T), BM_L = L^2 / (12 T).
+# With the CG at the box centre (KG = 1 m): GM_T = 0.5 + 1.333 - 1 = 0.833 m.
+name: barge
+category: surface
+mass: 41000          # kg = 1025 * 10 * 4 * 1
+water: sea
+geometry:
+  primitive: box
+  length: 10.0
+  width: 4.0
+  height: 2.0
+  hull_mass: solid   # CG at the box centre
