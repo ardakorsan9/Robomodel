@@ -32,8 +32,8 @@ Simulink ve Gazebo'da çalıştırma, REMUS 100 ve BlueROV2 karşılaştırmalar
 
 | # | Eksik | Kazanç | Tahmini süre |
 |---|---|---|---|
-| 6 | **Capytaine (BEM) ile eklenmiş kütle** | Her şekilde eklenmiş kütle ±%5–10 (şimdi şerit teorisi ±%15–35) | 8–12 saat |
-| 7 | **Çok gövdeli hidrodinamik** (katamaran, ayrık parçalar) | Şimdi tek gövde gibi hesaplanıp uyarılıyor | 6–8 saat |
+| 6 | ~~Capytaine (BEM) ile eklenmiş kütle~~ **Tamam:** elipsoitlerde Lamb'e %3, ~3 s | | |
+| 7 | ~~Çok gövdeli hidrodinamik~~ **Tamam:** gövde başına hesap, kaldıraç kollarıyla toplam (analitikle birebir) | | |
 | 8 | Büyük tek parça gövdelerde hız (1,3 milyon üçgen: 25 s) | Web için daha hızlı yanıt | 3–4 saat |
 | 9 | İtici dış hacmi ve itici–gövde etkileşimi | Küçük araçlarda birkaç % | 4–6 saat |
 
@@ -53,4 +53,4 @@ Simulink ve Gazebo'da çalıştırma, REMUS 100 ve BlueROV2 karşılaştırmalar
 | 14 | Proje kaydetme / geri yükleme (vehicle.yaml'ı arayüze geri yükleme) | Zip içinde vehicle.yaml var, arayüze geri yükleme yok |
 | 15 | Kullanıcı hesapları, ödeme | İş modeline bağlı |
 | 16 | Gazebo'ya akıntı ve dümen komutları | Şimdi dümen kuvvetleri pasif |
-| 17 | Diğer robot türleri (rover, drone, kol) | Çekirdek hazır; ortam modülleri yazılacak |
+| 17 | Diğer robot türleri | **Çok gövdeli çekirdek tamam** (link/eklem ağacı, RNEA/CRBA, URDF, Gazebo'da doğrulandı). Kalan: tekerlek–zemin teması, pervane, ayak teması modelleri ve web arayüzünde çok gövdeli robot |

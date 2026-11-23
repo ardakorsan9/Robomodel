@@ -115,3 +115,33 @@ def test_odd_shapes_give_valid_models(tmp_path, shape):
     model = model_for(tmp_path, mesh)
     assert np.all(np.isfinite(model.dynamics().mass_matrix))
     assert no_failures(model)
+
+
+def test_catamaran_hulls_add_up_with_lever_arms(tmp_path):
+    """Two hulls 0.6 m apart: added mass and drag are each hull's, moved to the centre."""
+
+    def build(mesh, name):
+        path = tmp_path / f"{name}.stl"
+        mesh.export(path)
+        v = parse_vehicle(
+            {
+                "name": name,
+                "category": "underwater",
+                "mass": 1000 * mesh.volume,
+                "water": "fresh",
+                "geometry": {"file": str(path), "axes": ["z", "x", "y"], "added_mass": "strip"},
+            }
+        )
+        return build_model(v)
+
+    one = trimesh.creation.cylinder(radius=0.1, height=1.2)
+    a, b = one.copy(), one.copy()
+    a.apply_translation([0.3, 0, 0])  # file x -> body y
+    b.apply_translation([-0.3, 0, 0])
+    single, cat = build(one, "single"), build(trimesh.util.concatenate([a, b]), "cat")
+    ma1, ma2 = np.diag(single.m_a.value), np.diag(cat.m_a.value)
+    q1, q2 = single.damping.quadratic.value, cat.damping.quadratic.value
+    assert ma2[1] == pytest.approx(2 * ma1[1], rel=1e-6)
+    assert ma2[5] == pytest.approx(2 * (ma1[5] + ma1[0] * 0.3**2), rel=1e-6)  # parallel axis
+    assert q2[5] == pytest.approx(2 * (q1[5] + q1[0] * 0.3**3), rel=1e-6)  # lever arm
+    assert no_failures(cat)

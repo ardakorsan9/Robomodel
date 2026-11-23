@@ -1,0 +1,20 @@
+# Two-link arm hanging from a base: shapes from simple CAD primitives (uniform density),
+# masses as if weighed. Check: robomodel robot examples/arm2.yaml -o out
+name: arm2
+category: multibody
+root: base
+links:
+  - name: base
+    mass: 3.0
+    geometry: {primitive: cylinder, length: 0.1, radius: 0.08}
+  - name: upper
+    mass: 2.0
+    geometry: {primitive: cylinder, length: 0.8, radius: 0.025, pose: {xyz: [0.4, 0, 0]}}
+  - name: fore
+    mass: 1.5
+    geometry: {primitive: cylinder, length: 0.6, radius: 0.02, pose: {xyz: [0.3, 0, 0]}}
+joints:
+  - {name: shoulder, type: revolute, parent: base, child: upper, axis: [0, 1, 0],
+     lower: -3.14, upper: 3.14, effort: 50, damping: 0.05}
+  - {name: elbow, type: revolute, parent: upper, child: fore, xyz: [0.8, 0, 0], axis: [0, 1, 0],
+     lower: -2.5, upper: 2.5, effort: 30, damping: 0.05}

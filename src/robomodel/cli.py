@@ -58,10 +58,30 @@ def main(argv: list[str] | None = None) -> int:
     serve = commands.add_parser("serve", help="start the web app (upload CAD, get the model)")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    robot = commands.add_parser("robot", help="multibody robot (links + joints): report, URDF")
+    robot.add_argument("robot", help="path to the robot YAML file (category: multibody)")
+    robot.add_argument("-o", "--output", help="also write URDF and meshes to this folder")
     wizard = commands.add_parser("wizard", help="which measurement improves the model most")
     wizard.add_argument("vehicle", help="path to the vehicle YAML file")
     args = parser.parse_args(argv)
 
+    if args.command == "robot":
+        from robomodel.multibody.description import load_robot
+        from robomodel.multibody.report import robot_report
+        from robomodel.multibody.urdf import write_urdf
+
+        try:
+            r = load_robot(args.robot)
+        except FileNotFoundError:
+            print(f"error: file not found: {args.robot}", file=sys.stderr)
+            return 1
+        except (VehicleError, GeometryError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        print(robot_report(r))
+        if args.output:
+            print(f"\nwrote {write_urdf(r, args.output)}")
+        return 0
     if args.command == "serve":
         from robomodel.web import serve as run_server
 

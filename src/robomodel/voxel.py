@@ -82,8 +82,9 @@ class VoxelHull:
         return centres, np.full(len(idx), self.pitch**2)
 
 
-def voxelize(mesh: trimesh.Trimesh, pitch: float, seed: int = 0,
-             close_gaps: bool = False) -> VoxelHull:
+def voxelize(
+    mesh: trimesh.Trimesh, pitch: float, seed: int = 0, close_gaps: bool = False
+) -> VoxelHull:
     """Solid voxel hull of any surface mesh (open, multi-part or closed).
 
     close_gaps: the mesh should be one closed body but has holes (a broken export): close

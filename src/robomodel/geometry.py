@@ -189,8 +189,14 @@ _PRIMITIVE_BUILDERS = {
 
 def _rpy_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
     """Rotation by roll (x), then pitch (y), then yaw (z): R = Rz Ry Rx."""
-    cr, sr, cp, sp, cy, sy = (np.cos(roll), np.sin(roll), np.cos(pitch), np.sin(pitch),
-                              np.cos(yaw), np.sin(yaw))
+    cr, sr, cp, sp, cy, sy = (
+        np.cos(roll),
+        np.sin(roll),
+        np.cos(pitch),
+        np.sin(pitch),
+        np.cos(yaw),
+        np.sin(yaw),
+    )
     rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
     ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
     rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])

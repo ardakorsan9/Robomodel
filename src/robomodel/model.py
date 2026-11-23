@@ -18,6 +18,7 @@ from robomodel.fins import FinModel, fin_model
 from robomodel.frame import frame_added_mass, frame_damping
 from robomodel.geometry import GeometryError, build_mesh, tilt_from_body_x
 from robomodel.hydrostatics import Hydrostatics, hydrostatics
+from robomodel.multihull import combine_damping, split_bodies
 from robomodel.parameter import Parameter, Source
 from robomodel.rigid_body import (
     MassProperties,
@@ -99,6 +100,8 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
         raise GeometryError(
             'added_mass: bem needs the optional packages: pip install "robomodel[bem]"'
         )
+    bodies = split_bodies(hull) if isinstance(hull, trimesh.Trimesh) and not frame else [hull]
+    multi = len(bodies) > 1
     if method == "exact" and g.primitive == "sphere":
         r = g.dims["radius"]
         m_a = ellipsoid_added_mass_parameter(r, r, r, rho)
@@ -108,13 +111,47 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
         m_a = bem.bem_parameter(hull, rho, centre)  # about the hull centre, like the others
     elif method == "frame":
         m_a = frame_added_mass(hull, rho)
+    elif multi:  # each hull on its own, added up about the body origin
+        total = None
+        for body in bodies:
+            c = np.asarray(body.center_mass)
+            s = slice_hull(body)
+            part = _move_parameter(
+                strip_theory_parameter(replace(s, x=s.x - c[0]), float(body.volume), rho), c
+            )
+            total = (
+                part
+                if total is None
+                else Parameter(
+                    total.value + part.value,
+                    total.sigma + part.sigma,
+                    part.source,
+                    part.unit,
+                    part.note,
+                )
+            )
+        m_a = Parameter(
+            total.value,
+            total.sigma,
+            total.source,
+            total.unit,
+            total.note + f"; {len(bodies)} separate hulls added up",
+        )
     else:
         m_a = strip_theory_parameter(local, float(hull.volume), rho)
-    m_a = _move_parameter(m_a, centre)
+    if not (multi and method == "strip"):
+        m_a = _move_parameter(m_a, centre)
 
     if frame:
         voxels = hull if isinstance(hull, VoxelHull) else voxelize(hull, max(hull.extents) / 100)
         damping = frame_damping(voxels, rho, centre)
+    elif multi:
+        parts = []
+        for body in bodies:
+            c = np.asarray(body.center_mass)
+            s = slice_hull(body)
+            parts.append((estimate_damping(replace(s, x=s.x - c[0]), rho), c))
+        damping = combine_damping(parts, centre)
     else:
         damping = estimate_damping(local, rho)
     fins = fin_model(vehicle.fins, rho)
@@ -137,9 +174,7 @@ def build_model(vehicle: Vehicle) -> VehicleModel:
         damping=damping,
         b_thr=allocation_matrix(vehicle.thrusters),
         fins=fins,
-        body_lift=None
-        if frame
-        else body_lift(sections, float(hull.bounds[1, 0]), rho, centre),
+        body_lift=None if frame else _body_lift_all(bodies, sections, hull, rho, centre),
         r_hydro=centre,
         warnings=_warnings(vehicle, props, statics, hull, frame),
     )
@@ -173,6 +208,29 @@ def _move_parameter(param: Parameter, r) -> Parameter:
     value = h.T @ np.asarray(param.value) @ h
     sigma = np.abs(h).T @ np.asarray(param.sigma) @ np.abs(h)
     return Parameter(value, sigma, param.source, param.unit, param.note)
+
+
+def _body_lift_all(bodies, sections, hull, rho, centre) -> Parameter | None:
+    """Hoerner body lift of one hull, or the sum over separate hulls."""
+    if len(bodies) == 1:
+        return body_lift(sections, float(hull.bounds[1, 0]), rho, centre)
+    total = None
+    for body in bodies:
+        lift = body_lift(slice_hull(body), float(body.bounds[1, 0]), rho, body.center_mass)
+        if lift is None:
+            continue
+        total = (
+            lift
+            if total is None
+            else Parameter(
+                total.value + lift.value,
+                total.sigma + lift.sigma,
+                lift.source,
+                lift.unit,
+                lift.note,
+            )
+        )
+    return total
 
 
 def _bem_affordable(hull) -> bool:
@@ -279,8 +337,8 @@ def _warnings(
     bodies = _count_bodies(hull)
     if bodies > 1:
         out.append(
-            f"the hull has {bodies} separate bodies: added mass and damping treat them as one "
-            "hull (interaction and gaps are not modelled), so they are rough"
+            f"the hull has {bodies} separate bodies: each is computed on its own and added up; "
+            "their interaction (shielding, gap flow) is not modelled"
         )
     # Slender methods need the long axis forward. Box-like ROVs are often a bit wider than
     # long, which is fine; a hull clearly slender along y or z was exported the wrong way.

@@ -98,6 +98,34 @@ robomodel testplan my_auv.yaml -o plan    # pool tests (CSV templates)
 robomodel calibrate my_auv.yaml run1.csv run2.csv --validate run3.csv
 ```
 
+## Robots with joints (arms, legs, wheeled bases)
+
+A multibody robot is a tree of links connected by joints. Each link's mass properties come
+from its CAD (uniform density, your weighed mass); the equations of motion
+`M(q) q̈ + h(q, q̇) = τ` are computed with the standard recursive algorithms (RNEA, CRBA).
+
+```yaml
+name: arm2
+category: multibody
+root: base
+floating: false                # true for a free-moving base (rover, drone, AUV)
+links:
+  - {name: base, mass: 3.0, geometry: {file: base.stl, unit: mm}}
+  - {name: upper, mass: 2.0, geometry: {file: upper.stl, unit: mm, pose: {xyz: [0, 0, 0]}}}
+joints:
+  - {name: shoulder, type: revolute, parent: base, child: upper, xyz: [0, 0, 0.1],
+     axis: [0, 1, 0], lower: -3.14, upper: 3.14, effort: 50}
+```
+
+```bash
+robomodel robot arm2.yaml -o out    # report, checks, URDF + meshes (ROS, Gazebo, MATLAB)
+```
+
+Validated: pendulum period (0.1 %), analytic 2-link mass matrix (exact), energy of a chaotic
+double pendulum (10⁻⁶), free fall of a floating base, and a damped two-link swing in Gazebo
+from the exported URDF (elbow within 0.3–7 mm over 5 s). Joint friction, motors, wheel and
+foot contacts are not in the CAD: they need data, like water damping does.
+
 ## Outputs
 
 | Output | Contents |
@@ -148,5 +176,8 @@ simulation), self-righting, neutral buoyancy, stability at rest and at cruise sp
 | `src/robomodel/matlab_export.py`, `gazebo_export.py` | Outputs |
 | `src/robomodel/calibration.py`, `testplan.py`, `wizard.py` | Pool tests and calibration |
 | `src/robomodel/web.py`, `static/index.html` | Web app |
+| `src/robomodel/bem.py` | Boundary element added mass (optional `robomodel[bem]`) |
+| `src/robomodel/multihull.py` | Separate hulls computed one by one and added up |
+| `src/robomodel/multibody/` | Links, joints, RNEA/CRBA dynamics, robot files, URDF |
 | `validation/` | REMUS 100, BlueROV2 and calibration studies (write the reports in `docs/`) |
 | `docs/eksenler.md`, `docs/plan.md` | Axis conventions, project plan |

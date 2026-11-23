@@ -25,8 +25,10 @@ DOFS = ("Surge", "Sway", "Heave", "Roll", "Pitch", "Yaw")
 
 
 def available() -> bool:
-    return (importlib.util.find_spec("capytaine") is not None
-            and importlib.util.find_spec("fast_simplification") is not None)
+    return (
+        importlib.util.find_spec("capytaine") is not None
+        and importlib.util.find_spec("fast_simplification") is not None
+    )
 
 
 def surface_mesh(hull) -> trimesh.Trimesh:
@@ -45,11 +47,19 @@ def voxel_surface(hull) -> trimesh.Trimesh:
     """The exposed faces of a voxel hull as a closed, outward-facing triangle mesh."""
     grid = np.pad(hull.filled, 1)
     vertices, faces = [], []
-    corners = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
-                        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], float)
+    corners = np.array(
+        [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+        float,
+    )
     # quad corner indices for each of the 6 neighbour directions, counter-clockwise from outside
-    quads = {(-1, 0, 0): (0, 4, 7, 3), (1, 0, 0): (1, 2, 6, 5), (0, -1, 0): (0, 1, 5, 4),
-             (0, 1, 0): (3, 7, 6, 2), (0, 0, -1): (0, 3, 2, 1), (0, 0, 1): (4, 5, 6, 7)}
+    quads = {
+        (-1, 0, 0): (0, 4, 7, 3),
+        (1, 0, 0): (1, 2, 6, 5),
+        (0, -1, 0): (0, 1, 5, 4),
+        (0, 1, 0): (3, 7, 6, 2),
+        (0, 0, -1): (0, 3, 2, 1),
+        (0, 0, 1): (4, 5, 6, 7),
+    }
     for direction, quad in quads.items():
         neighbour = np.roll(grid, shift=[-d for d in direction], axis=(0, 1, 2))
         exposed = np.argwhere(grid & ~neighbour)
@@ -73,8 +83,9 @@ MAX_GRID_CELLS = 8_000_000  # memory: the smoothed float grid is 8 bytes per cel
 
 def panel_aspect(mesh: trimesh.Trimesh) -> float:
     """95th percentile of a sliver measure over the faces (about 1.3 for equilateral)."""
-    edges = np.linalg.norm(mesh.vertices[mesh.faces] - np.roll(mesh.vertices[mesh.faces], 1,
-                                                               axis=1), axis=2)
+    edges = np.linalg.norm(
+        mesh.vertices[mesh.faces] - np.roll(mesh.vertices[mesh.faces], 1, axis=1), axis=2
+    )
     ratio = edges.max(axis=1) / np.sqrt(2 * np.maximum(mesh.area_faces, 1e-30))
     return float(np.percentile(ratio, 95))
 
@@ -105,8 +116,11 @@ def bem_panels(hull, panels: int = PANELS) -> trimesh.Trimesh:
             if direct.volume < 0:
                 direct.invert()
             return direct
-    return _marching_panels(hull, panels) if not isinstance(hull, VoxelHull) else \
-        _marching_panels(hull, panels, voxels=hull)
+    return (
+        _marching_panels(hull, panels)
+        if not isinstance(hull, VoxelHull)
+        else _marching_panels(hull, panels, voxels=hull)
+    )
 
 
 def _marching_panels(hull, panels: int, voxels=None) -> trimesh.Trimesh:
@@ -146,8 +160,14 @@ def bem_added_mass(hull, rho: float, centre, panels: int = PANELS) -> np.ndarray
     solver = cpt.BEMSolver()
     matrix = np.zeros((6, 6))
     for j, dof in enumerate(DOFS):
-        problem = cpt.RadiationProblem(body=body, radiating_dof=dof, omega=np.inf,
-                                       free_surface=np.inf, water_depth=np.inf, rho=rho)
+        problem = cpt.RadiationProblem(
+            body=body,
+            radiating_dof=dof,
+            omega=np.inf,
+            free_surface=np.inf,
+            water_depth=np.inf,
+            rho=rho,
+        )
         result = solver.solve(problem, keep_details=False)
         for i, other in enumerate(DOFS):
             matrix[i, j] = result.added_masses[other]

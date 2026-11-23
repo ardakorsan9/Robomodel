@@ -28,8 +28,9 @@ MIN_LD = 3.0  # below this the hull is not slender and the formula does not appl
 REL_SIGMA = 0.5
 
 
-def body_lift(sections: Sections, nose_x: float, rho: float,
-              centre=(0.0, 0.0, 0.0)) -> Parameter | None:
+def body_lift(
+    sections: Sections, nose_x: float, rho: float, centre=(0.0, 0.0, 0.0)
+) -> Parameter | None:
     """Body lift matrix (multiply by |u|), or None for a stubby hull."""
     frontal = float(sections.area.max())
     d = 2 * np.sqrt(frontal / np.pi)
