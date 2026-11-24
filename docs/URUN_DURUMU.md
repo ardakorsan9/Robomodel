@@ -1,56 +1,60 @@
-# Ürün durumu ve eksikler (2026-11-22)
+# Ürün durumu ve eksikler (2026-11-24)
 
-Bu liste denemelere dayanıyor: tuhaf şekillerle stres testi, web API testleri, MATLAB,
-Simulink ve Gazebo'da çalıştırma, REMUS 100 ve BlueROV2 karşılaştırmaları.
+Bu liste testlere, tarayıcı denemesine ve gerçek robotlarla yapılan karşılaştırmalara dayanıyor.
+Kullandıkça bulunan eksikler buraya eklenecek.
 
 ## Hazır olanlar
 
 | Alan | Durum |
 |---|---|
-| CAD girişi | STL, STEP, OBJ, PLY; birim, eksen, serbest döndürme (`rotate`) |
-| Bozuk CAD | Çift yüzey, dejenere üçgen, ters normal, delik (kapak kapatma), iç içe katı (voksel birleşimi), açık montaj (voksel) otomatik onarılıyor ve raporlanıyor |
-| Tuhaf şekiller | Torus, ince plaka, katamaran, gürültülü tarama, 1 cm–20 m, eğik çizim, uzak orijin: 17 şekilde stres testi |
-| Fizik | M_RB, M_A, C, D, g(η), kanat, gövde kaldırması, itici (ölü bölge, doyma), akıntı; hidrodinamik terimler gövde merkezinde hesaplanıp orijine taşınıyor (CAD orijininden bağımsız) |
-| Güvenilirlik | Her değer ± belirsizlik ve kaynakla; alt/orta/üst model; 10 otomatik matematik kontrolü; birim ve yoğunluk makullük uyarısı |
-| Çıktı | MATLAB (3 model, doğrusal A-B), Simulink kurucu, Gazebo (doğrulandı), YAML, rapor, sürüm ve girdi özeti |
-| Web | Yükle, 3B önizleme, boyut gösterimi, tıklayarak itici/kanat/parça, örnek araç, sonuç paneli, zip, ayrı işlemde hesap (süre sınırı, eşzamanlı iş sınırı), 2 saatte otomatik silme, "şimdi sil", güvenlik başlıkları, sağlık kontrolü |
-| Yayın | Dockerfile, yayın kılavuzu (`docs/DEPLOY.md`) |
+| Robot tipleri | Sualtı (AUV, ROV), su üstü (tekne, USV), drone (çok rotorlu), kara robotu (tekerlekli, paletli), robot kol (web + komut satırı); bacaklı robotlar sadece komut satırında |
+| CAD girişi | STL, STEP (montaj parça parça), OBJ, PLY; birim, eksen, döndürme; bozuk CAD onarımı ve voksel yedeği |
+| Kütle dağılımı | STEP montajında parça adından malzeme tahmini, toplam kütleye ölçekleme, makul değilse uyarı; tek parçada eşit yoğunluk |
+| Çıktılar | MATLAB (alt/orta/üst model), Simulink kurucu, Gazebo (yalnız sualtı), URDF (kol), toolbox gerektirmeyen MATLAB kol dinamiği, rapor, YAML |
+| Web | Sade akış (tip, dosya, kütle), isteğe bağlı ayrıntılar, gereksinim kartları (gereken itki/tork), motor listesi (T200, Dynamixel), tıklayarak yerleştirme, TR/EN, 2 saatte otomatik silme |
+| Testler | 253 otomatik test; MATLAB ile Python farkı 10⁻⁷–10⁻¹⁵ (sualtı, su üstü, drone, kara, kol) |
+
+## Ölçülen doğruluk
+
+| Değer | Hata | Kaynak |
+|---|---|---|
+| Hacim, kaldırma, GM, su çekimi | %0–4 | REMUS 100, kutu duba, Wigley |
+| Tekerlekli robot son hız / dönüş | %4–11 | TurtleBot3 (ROBOTIS) |
+| Kol yerçekimi torku (ana eklemler) | %14–21 (üreticinin kendi değerleri %10–16) | Franka Panda (Gaz et al. 2019) |
+| Atalet, eşit yoğunlukla | %0–45 | TurtleBot3, Panda uç eklemler |
+| Su / hava direnci (sönüm) | 1,6–10 kat düşük | REMUS 100, BlueROV2 |
+| Gemi dönüş katsayıları (N_r, Y_r) | −%45 / eksik | Wigley, Clarke 1983 |
 
 ## Eksikler (öncelik sırasıyla)
 
-### A. Yayından önce şart
+### A. Doğruluk (yeni özellikten önce)
+1. **Sönüm düzeltmesi:** yayınlanmış ölçümlerden şekil türüne göre katsayı. Yarım kalan çalışma ayrı
+   bir dalda; bitirilip birleştirilecek.
+2. **Kalibrasyonu tüm tiplere ve web'e taşımak:** şu an yalnızca sualtı için komut satırında
+   (`robomodel calibrate`).
+3. **Rotor ve dişli ataleti (kol eklemleri), motor/dişli malzeme tahmini:** Panda'nın uç eklem hatasının
+   kaynağı.
+4. **Doğruluk eşiklerini testlere yazmak:** REMUS, BlueROV2, TurtleBot3, Panda.
+5. **Bekleyen doğrulamalar:** Crazyflie (drone; ETH tezi ve CAD gerekli), KCS gemisi (SIMMAN verisi).
 
-| # | Eksik | Neden | Tahmini süre |
-|---|---|---|---|
-| 1 | **Arayüzü gerçek tarayıcılarda uçtan uca denemek** (Chrome, Firefox, Safari, telefon) | API testli, ama tıklama ve 3B önizleme insan gözüyle denenmedi | 2–3 saat |
-| 2 | **Lisans seçimi** (açık kaynak mı, ticari mi) | Yayınlamadan önce karar gerekir | Senin kararın |
-| 3 | **Gizlilik politikası ve kullanım koşulları** (AB'deysen KVKK/GDPR) | CAD dosyaları ticari sır olabilir; doğruluk sınırları yazılmalı | 2–4 saat + hukuki kontrol |
-| 4 | **Sunucu, alan adı, HTTPS, hız sınırı** | Docker hazır, ama denenmedi (bu bilgisayarda Docker yok) | 3–5 saat |
-| 5 | **Windows ve macOS'ta kurulum denemesi** | Komut satırı kullanıcıları için | 1–2 saat |
+### B. Kullanım
+6. **Yeni sade sayfayı tarayıcıda denemek** (gereksinim kartları, motor listesi, kapalı bölümler).
+7. **Motor verisi girilmemiş tekerlek** için MATLAB çıktısını MATLAB'da denemek.
+8. **STEP montajından itici, rotor ve tekerleği otomatik bulmak** (parça adlarından).
+9. **Drone motor+pervane itki tablosu** (kaynaklı değerler); KV + pervane boyundan tahmin.
+10. **Komut satırı raporuna gereksinim bölümü** (şu an yalnızca web raporunda).
+11. **KILAVUZ.md'yi yeni sayfaya göre güncellemek.**
 
-### B. Doğruluğu artıran (CAD'den hâlâ çıkarılabilecekler)
+### C. Eksik fizik ve çıktılar
+12. **Gazebo çıktısı:** su üstü, drone, kara robotu.
+13. **Drone:** itkinin hava hızıyla düşmesi, motor gecikmesi, jiroskopik etki (son hız ve tırmanma şu an
+    üst sınır).
+14. **Kara robotu:** yük aktarımı, eğim, süspansiyon.
+15. **Su üstü:** dalga, Froude 0,3 üstünde direnç.
+16. **Kara robotu ve kol için doğrusal model** (kontrolcü tasarımı için A, B).
 
-| # | Eksik | Kazanç | Tahmini süre |
-|---|---|---|---|
-| 6 | ~~Capytaine (BEM) ile eklenmiş kütle~~ **Tamam:** elipsoitlerde Lamb'e %3, ~3 s | | |
-| 7 | ~~Çok gövdeli hidrodinamik~~ **Tamam:** gövde başına hesap, kaldıraç kollarıyla toplam (analitikle birebir) | | |
-| 8 | Büyük tek parça gövdelerde hız (1,3 milyon üçgen: 25 s) | Web için daha hızlı yanıt | 3–4 saat |
-| 9 | İtici dış hacmi ve itici–gövde etkileşimi | Küçük araçlarda birkaç % | 4–6 saat |
-
-### C. CAD'den çıkmayan (veri gerekir)
-
-| # | Eksik | Yol |
-|---|---|---|
-| 10 | **Sönüm** (en büyük belirsizlik) | Havuz testi + `robomodel calibrate`; o zamana kadar alt/üst model |
-| 11 | Gerçek araçla kalibrasyon kanıtı | En az bir aracı havuzda test etmek |
-| 12 | Daha fazla doğrulama aracı | 3–5 araç daha → sönüm için istatistiksel düzeltme |
-
-### D. Ürünleşme
-
-| # | Eksik | Not |
-|---|---|---|
-| 13 | Türkçe/İngilizce arayüz dili seçimi | Arayüz şimdilik İngilizce |
-| 14 | Proje kaydetme / geri yükleme (vehicle.yaml'ı arayüze geri yükleme) | Zip içinde vehicle.yaml var, arayüze geri yükleme yok |
-| 15 | Kullanıcı hesapları, ödeme | İş modeline bağlı |
-| 16 | Gazebo'ya akıntı ve dümen komutları | Şimdi dümen kuvvetleri pasif |
-| 17 | Diğer robot türleri | **Çok gövdeli çekirdek tamam** (link/eklem ağacı, RNEA/CRBA, URDF, Gazebo'da doğrulandı). Kalan: tekerlek–zemin teması, pervane, ayak teması modelleri ve web arayüzünde çok gövdeli robot |
+### D. Yayın
+17. **Sunucu, alan adı, HTTPS:** Docker hazır ama denenmedi.
+18. **Gizlilik metni ve kullanım koşulları:** kullanıcı CAD'leri için.
+19. **Windows ve macOS'ta kurulum denemesi.**
+20. **Kulüpten kullanıcı testi:** 3–5 kişi, kendi CAD'leriyle.
