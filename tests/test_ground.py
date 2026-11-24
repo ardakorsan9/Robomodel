@@ -152,9 +152,51 @@ def test_tracks_spread_their_load_and_coasting_stops():
     assert status["can turn (steering or driven wheels on both sides)"] == OK
 
 
-def test_driven_wheel_needs_motor_data():
-    with pytest.raises(VehicleError, match="stall_torque"):
-        _robot([{"name": "w", "position": [0, 0, 0], "radius": 0.1, "driven": True}])
+def test_driven_wheel_needs_both_motor_numbers_or_neither():
+    with pytest.raises(VehicleError, match="both stall_torque"):
+        _robot(
+            [{"name": "w", "position": [0, 0, 0], "radius": 0.1, "driven": True, "stall_torque": 1}]
+        )
+
+
+def test_torque_input_wheels_accelerate_by_the_hand_formula():
+    """No motor data: the input is the wheel torque in N m, no limit, no motor line."""
+    wheels = [
+        {"name": n, "position": [x, y, 0.05], "radius": 0.1, "driven": True}
+        for n, x, y in (("fl", 0.2, -0.2), ("fr", 0.2, 0.2), ("rl", -0.2, -0.2), ("rr", -0.2, 0.2))
+    ]
+    gm = _robot(wheels, surface={"mu": 1.5, "rolling": 0.0})
+    assert gm.direct_torque and np.all(np.isinf(gm.free_speed))
+    torque = 3.0  # N m per wheel: well above what any motor line would give (command clip 1)
+    traj = simulate(gm, 1.0, np.full(4, torque), dt_out=0.25)
+    accel = 4 * torque / 0.1 / 10.0  # sum of tau / R over m, 12 m/s^2 < mu g = 14.7
+    assert np.allclose(traj.state[:, 3], accel * traj.t, rtol=1e-5, atol=1e-9)
+    assert performance(gm) == {}  # no motor data: no top speed or acceleration
+    assert any("no motor data" in w for w in gm.warnings)
+    # the low / high models do not scale a torque input
+    from robomodel.ground import model_range
+
+    assert np.allclose(model_range(gm)["high"].stall_force, gm.stall_force)
+
+
+def test_torque_input_matlab_has_the_direct_case(tmp_path):
+    from robomodel.ground_matlab import write_ground_matlab
+
+    gm = _robot(
+        [
+            {"name": "l", "position": [0, -0.2, 0.05], "radius": 0.1, "driven": True},
+            {"name": "r", "position": [0, 0.2, 0.05], "radius": 0.1, "driven": True},
+            {"name": "c", "position": [0.3, 0, 0.1], "radius": 0.05, "caster": True},
+        ]
+    )
+    write_ground_matlab(gm, tmp_path)
+    params = (tmp_path / "bot_params.m").read_text()
+    assert "p.direct_in = logical([1; ...\n     1]);" in params
+    assert "p.motor = [0; ...\n     0; ...\n     1];" in params
+    assert (
+        "cmd(p.direct_in) = ud(p.direct_in);"
+        in (tmp_path / "robomodel_ground_dynamics.m").read_text()
+    )
 
 
 def test_example_rover_and_matlab_files(tmp_path):

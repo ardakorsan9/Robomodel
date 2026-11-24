@@ -146,3 +146,35 @@ def test_matlab_and_web_handle_a_drone(tmp_path):
     example = (tmp_path / "quad450_example.m").read_text()
     assert "% hover" in example
     assert "p.B = 0;" in (tmp_path / "quad450_params.m").read_text()
+
+
+BOX = {"primitive": "box", "length": 0.1, "width": 0.1, "height": 0.04}
+
+
+def test_drone_without_rotors_builds_and_only_warns():
+    data = {"name": "norotor", "category": "aerial", "mass": 1.0, "geometry": BOX}
+    model = build_model(parse_vehicle(data))
+    checks = run_checks(model.dynamics())
+    assert not [c for c in checks if c.status == FAIL]
+    assert any(c.status == "warn" and "rotors" in c.name for c in checks)
+    assert any("no rotors given" in w for w in model.warnings)
+
+
+def test_rotor_without_max_thrust_is_rated_at_the_recommended_value():
+    data = {
+        "name": "q",
+        "category": "aerial",
+        "mass": 1.0,
+        "geometry": BOX,
+        "rotors": [
+            {"position": [ARM, 0, 0], "spin": "ccw", "diameter": 0.2},
+            {"position": [-ARM, 0, 0], "spin": "ccw", "max_thrust": None, "diameter": 0.2},
+            {"position": [0, ARM, 0], "spin": "cw", "diameter": 0.2},
+            {"position": [0, -ARM, 0], "spin": "cw", "diameter": 0.2},
+        ],
+    }
+    model = build_model(parse_vehicle(data))
+    assert all(t.assumed_limit for t in model.vehicle.thrusters)
+    assert model.vehicle.thrusters[0].max_forward == pytest.approx(2 * 9.80665 / 4)
+    assert model.hover.possible and model.hover.thrust_to_weight == pytest.approx(2.0)
+    assert any("maximum rotor thrust not given" in w for w in model.warnings)

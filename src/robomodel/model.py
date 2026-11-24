@@ -375,8 +375,17 @@ def _aerial_warnings(vehicle, props, hov, hull) -> list[str]:
         out.append(f"the drone is {extents.max():.3g} m across: check the file units (mm / m)")
     rotors = [t for t in vehicle.thrusters if t.torque != 0 or t.diameter > 0]
     if not vehicle.thrusters:
-        out.append("no rotors: the model has no control inputs")
+        out.append(
+            "no rotors given: the model has no control inputs and hover cannot be checked; "
+            "see the requirements for the thrust the drone needs"
+        )
         return out
+    if any(t.assumed_limit for t in vehicle.thrusters):
+        out.append(
+            f"maximum rotor thrust not given: each rotor is rated at "
+            f"{vehicle.thrusters[0].max_forward:.3g} N (2 x weight / number of rotors, the "
+            "recommended value); the command scale follows from it, hover does not"
+        )
     if not hov.possible:
         out.append(
             "the rotors cannot hold the drone level in hover (too little thrust, or the centre "
