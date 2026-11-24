@@ -198,6 +198,15 @@ def _aerial_checks(dyn: Dynamics) -> list[Check]:
 
     hov = hover(dyn.b_thr, dyn.thrust_max, dyn.weight, dyn.r_g)
     out = []
+    if dyn.b_thr.shape[1] == 0:  # no rotors given ("I don't know"): nothing to check yet
+        return [
+            Check(
+                "rotors given (hover and control checks)",
+                WARN,
+                "no rotors: hover and control cannot be checked; "
+                "see the requirements for the thrust the drone needs",
+            )
+        ]
     if hov.possible:
         load = 100 * float(np.max(hov.thrust / np.maximum(dyn.thrust_max, 1e-12)))
         out.append(

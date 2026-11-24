@@ -68,8 +68,26 @@ PART_SHAPES = {
 }
 
 # Thrust limits in newtons (forward, reverse) for known thruster models.
-# T200 values: Blue Robotics datasheet at 16 V, as remembered (5.25 / 4.1 kgf); check them.
+# T200: Blue Robotics at 16 V, 5.25 / 4.1 kgf forward / reverse (x 9.80665 = 51.5 / 40.2 N),
+# https://bluerobotics.com/store/thrusters/t100-t200-thrusters/t200-thruster-r2-rp/
 THRUSTER_PRESETS = {"T200": (51.5, 40.2)}
+
+# Wheel motors for ground robots, torque at the output shaft: name ->
+# (stall torque N m, no-load speed rpm, supply voltage V), at the output shaft.
+# DYNAMIXEL XL430-W250 (ROBOTIS e-manual, https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/):
+#   11.1 V: stall 1.4 N m, no-load 57 rpm; 12 V: stall 1.5 N m, no-load 61 rpm.
+WHEEL_MOTOR_PRESETS = {
+    "XL430-W250 (11.1 V)": (1.4, 57.0, 11.1),
+    "XL430-W250 (12 V)": (1.5, 61.0, 12.0),
+    # XM430-W210, ROBOTIS e-manual https://emanual.robotis.com/docs/en/dxl/x/xm430-w210/
+    #   11.1 V: stall 2.7 N m, 70 rpm; 12 V: stall 3.0 N m, 77 rpm.
+    "XM430-W210 (11.1 V)": (2.7, 70.0, 11.1),
+    "XM430-W210 (12 V)": (3.0, 77.0, 12.0),
+    # XM430-W350, https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/
+    #   11.1 V: stall 3.8 N m, 43 rpm; 12 V: stall 4.1 N m, 46 rpm.
+    "XM430-W350 (11.1 V)": (3.8, 43.0, 11.1),
+    "XM430-W350 (12 V)": (4.1, 46.0, 12.0),
+}
 
 
 class VehicleError(ValueError):
@@ -135,6 +153,9 @@ class Thruster:
     # - for counter-clockwise. Drone rotors need it for yaw; marine thrusters ignore it (0).
     torque: float = 0.0
     diameter: float = 0.0  # propeller diameter, m (rotors; 0 = not given)
+    # True: the user gave no maximum thrust; max_forward is then the recommended value
+    # (ROTOR_ASSUMED_THRUST_TO_WEIGHT x weight / number of rotors), not a datasheet number.
+    assumed_limit: bool = False
 
 
 @dataclass(frozen=True)
@@ -168,6 +189,11 @@ class Wheel:
     stall_torque: float = 0.0  # N m at the wheel (after the gearbox), full command, standstill
     no_load_speed: float = 0.0  # rad/s at the wheel, full command, no load
     track_length: float = 0.0  # m; > 0: a track whose ground contact is this long
+
+    @property
+    def direct_torque(self) -> bool:
+        """Driven, but no motor data: the input is the wheel torque in N m (no motor line)."""
+        return self.driven and self.stall_torque <= 0
 
 
 @dataclass(frozen=True)
@@ -272,8 +298,10 @@ def parse_vehicle(data: object, base_dir: Path = Path(".")) -> Vehicle:
         if (t := _thruster(raw, i, problems)) is not None
     )
     rotors = []
-    for i, raw in enumerate(_list(data.get("rotors"), "rotors", problems)):
-        if (r := _rotor(raw, i, problems)) is not None:
+    rotor_list = _list(data.get("rotors"), "rotors", problems)
+    weight = mass * 9.80665 if mass is not None else 0.0
+    for i, raw in enumerate(rotor_list):
+        if (r := _rotor(raw, i, problems, weight, len(rotor_list))) is not None:
             rotors.append(r[0])
             if r[1] is not None:
                 parts = parts + (r[1],)
@@ -350,6 +378,8 @@ def _wheel(raw: object, i: int, problems: list[str]) -> tuple[Wheel, Part | None
 
     def number(key, default, low=0.0):
         value = raw.get(key, default)
+        if value is None:  # empty field in the web page: not given
+            value = default
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < low:
             problems.append(f"'{label}.{key}' must be a number >= {low:g}, got {value!r}")
             return default
@@ -369,10 +399,12 @@ def _wheel(raw: object, i: int, problems: list[str]) -> tuple[Wheel, Part | None
     mass = number("mass", 0.0)
     stall = number("stall_torque", 0.0)
     rpm = number("no_load_rpm", 0.0)
-    if driven and (stall <= 0 or rpm <= 0):
+    # Motor data is optional: without both numbers the input is the wheel torque in N m.
+    if driven and (stall > 0) != (rpm > 0):
         problems.append(
-            f"{label} is driven: give stall_torque (N m at the wheel) and no_load_rpm (at the "
-            "wheel, after the gearbox) from the motor datasheet"
+            f"{label}: give both stall_torque (N m at the wheel) and no_load_rpm (at the wheel, "
+            "after the gearbox) from the motor datasheet, or neither (then the input is the "
+            "wheel torque in N m)"
         )
     if caster and (driven or steered):
         problems.append(f"{label}: a caster cannot be driven or steered")
@@ -413,9 +445,16 @@ def _air_density(value: object, problems: list[str]) -> float:
 # Propeller torque / thrust ratio when not measured: kappa = D C_P / (2 pi C_T) with typical
 # small-propeller coefficients C_T ~ 0.11, C_P ~ 0.045 (static, APC-style props), assumed.
 ROTOR_TORQUE_PER_DIAMETER = 0.045 / (2 * np.pi * 0.11)
+# A rotor without a given maximum thrust is rated at this many times the weight in total
+# (the usual rule of thumb for a drone that can still manoeuvre), split evenly, and the
+# model says so in its warnings. The maximum only scales the 0..1 command; hover and the
+# requirements do not depend on it.
+ROTOR_ASSUMED_THRUST_TO_WEIGHT = 2.0
 
 
-def _rotor(raw: object, i: int, problems: list[str]) -> tuple[Thruster, Part | None] | None:
+def _rotor(
+    raw: object, i: int, problems: list[str], weight: float = 0.0, count: int = 1
+) -> tuple[Thruster, Part | None] | None:
     """A drone rotor: thrust along `direction` (default up, -z), reaction torque from spin."""
     label = f"rotors[{i}]"
     if not isinstance(raw, dict):
@@ -431,7 +470,11 @@ def _rotor(raw: object, i: int, problems: list[str]) -> tuple[Thruster, Part | N
     spin = raw.get("spin")
     if spin not in ("cw", "ccw"):
         problems.append(f"{label}.spin must be cw or ccw (seen from above), got {spin!r}")
-    max_thrust = _positive(raw.get("max_thrust"), f"{label}.max_thrust", problems)
+    assumed = raw.get("max_thrust") is None and weight > 0
+    if assumed:  # "I don't know": rate the rotor at the recommended value
+        max_thrust = ROTOR_ASSUMED_THRUST_TO_WEIGHT * weight / max(count, 1)
+    else:
+        max_thrust = _positive(raw.get("max_thrust"), f"{label}.max_thrust", problems)
     diameter = raw.get("diameter", 0.0)
     if isinstance(diameter, bool) or not isinstance(diameter, (int, float)) or diameter < 0:
         problems.append(f"'{label}.diameter' must be a number of metres >= 0")
@@ -458,6 +501,7 @@ def _rotor(raw: object, i: int, problems: list[str]) -> tuple[Thruster, Part | N
         max_reverse=0.0,  # ordinary ESCs only spin one way
         torque=float(kappa) if spin == "cw" else -float(kappa),
         diameter=float(diameter),
+        assumed_limit=assumed,
     )
     part = None
     if motor_mass:
@@ -594,6 +638,8 @@ def _geometry(raw: object, base_dir: Path, problems: list[str]) -> Geometry | No
         return None
     for key, default in OPTIONAL_DIMS.get(kind, {}).items():
         value = raw.get(key, default)
+        if value is None:  # empty field in the web page: not given
+            value = default
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
             problems.append(f"'geometry.{key}' must be a number >= 0, got {value!r}")
             return None

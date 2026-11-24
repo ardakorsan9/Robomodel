@@ -75,6 +75,20 @@ def index() -> str:
     return (STATIC / "index.html").read_text(encoding="utf-8")
 
 
+@app.get("/api/presets")
+def presets() -> dict:
+    """Motor and thruster presets for the page's dropdowns (values and sources: vehicle.py)."""
+    from robomodel.vehicle import THRUSTER_PRESETS, WHEEL_MOTOR_PRESETS
+
+    return {
+        "thrusters": {k: {"forward": v[0], "reverse": v[1]} for k, v in THRUSTER_PRESETS.items()},
+        "wheel_motors": {
+            k: {"stall_torque": v[0], "no_load_rpm": v[1], "volts": v[2]}
+            for k, v in WHEEL_MOTOR_PRESETS.items()
+        },
+    }
+
+
 @app.get("/api/version")
 def version() -> dict:
     return {"robomodel": __version__}
@@ -167,7 +181,10 @@ def _run_build(folder: str, spec: dict, result_id: str) -> None:
         name = (folder / "name.txt").read_text(encoding="utf-8")
         shown = dict(spec, geometry=dict(geometry, file=name))
         (out / "vehicle.yaml").write_text(yaml.safe_dump(shown, sort_keys=False), encoding="utf-8")
-        text = report(model)
+        from robomodel.requirements import format_requirements, requirements
+
+        needs = requirements(model)
+        text = report(model) + "\n\n" + format_requirements(needs)
         (out / "report.txt").write_text(text + "\n", encoding="utf-8")
         data = to_dict(model)
         (out / "model.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
@@ -210,6 +227,8 @@ def _run_build(folder: str, spec: dict, result_id: str) -> None:
             },
             "model": data,  # every value with sigma, source and unit
             "behaviour": _behaviour(model),
+            "requirements": needs,
+            "has_actuators": bool(model.vehicle.thrusters),
         }
         (out / "result.json").write_text(json.dumps(result, default=float), encoding="utf-8")
     except Exception as e:  # anything unexpected: tell the user, keep the server alive
@@ -227,7 +246,10 @@ def _ground_build(vehicle, spec, geometry, folder: Path, out: Path, result_id: s
     name = (folder / "name.txt").read_text(encoding="utf-8")
     shown = dict(spec, geometry=dict(geometry, file=name))
     (out / "vehicle.yaml").write_text(yaml.safe_dump(shown, sort_keys=False), encoding="utf-8")
-    text = ground.report(gm)
+    from robomodel.requirements import format_requirements, requirements
+
+    needs = requirements(gm)
+    text = ground.report(gm) + "\n\n" + format_requirements(needs)
     (out / "report.txt").write_text(text + "\n", encoding="utf-8")
     data = ground.to_dict(gm)
     (out / "model.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
@@ -248,6 +270,8 @@ def _ground_build(vehicle, spec, geometry, folder: Path, out: Path, result_id: s
         },
         "model": data,
         "behaviour": ground.behaviour(gm),
+        "requirements": needs,
+        "has_actuators": any(not w.direct_torque for w in vehicle.wheels if w.driven),
     }
     (out / "result.json").write_text(json.dumps(result, default=float), encoding="utf-8")
 

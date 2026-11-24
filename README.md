@@ -76,6 +76,23 @@ Open http://127.0.0.1:8000, upload the CAD, check the axes in the 3D view (red =
 blue = down), enter the mass, click thrusters and fins onto the hull, press **Build model** and
 download a zip with everything below.
 
+The page only asks for the robot type, the CAD, a name and the mass. Everything else (thrusters,
+fins, rotors, motors, heavy parts, measured values) sits in one collapsed "optional" section, and
+"I don't know" is always allowed. When you do not know your actuators, the result shows what the
+robot **needs** (computed from the model, `robomodel.requirements`): total thrust to hold 0.5 / 1 /
+2 m/s and the vertical thrust against net buoyancy (underwater, surface), hover and recommended
+maximum thrust, total and per rotor (drone), wheel torque for a 20 % slope and 1 m/s^2 plus the
+tip-over limit (ground), each as low / nominal / high. Unknown actuator data is handled this way:
+
+* no thrusters or rotors: the model builds without control inputs (a drone gets a WARN, not a FAIL);
+* a rotor without `max_thrust`: rated at the recommended 2 x weight / number of rotors, flagged in
+  the warnings (hover does not depend on it);
+* a driven wheel without `stall_torque` and `no_load_rpm`: its input is the wheel torque in N m,
+  no motor line and no limit (top speed and acceleration are then not computed).
+
+Dropdown presets (values and sources in `vehicle.py`): Blue Robotics T200, DYNAMIXEL XL430-W250,
+XM430-W210 and XM430-W350 (ROBOTIS e-manual).
+
 ## Use it from the command line
 
 Describe the vehicle in a short YAML file (all positions in metres, body frame: x forward,

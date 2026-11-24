@@ -236,3 +236,76 @@ def test_ground_robot_build():
         io.BytesIO(client.get(f"/api/download/{upload}/{body['result']}").content)
     ).namelist()
     assert "web_rover/matlab/web_rover_params.m" in names and "web_rover/report.txt" in names
+
+
+def _box_upload(dims_mm):
+    buf = io.BytesIO()
+    trimesh.creation.box(dims_mm).export(buf, file_type="stl")
+    r = client.post("/api/upload", files={"file": ("robot.stl", buf.getvalue(), "model/stl")})
+    return r.json()["id"]
+
+
+@pytest.mark.parametrize(
+    "category, mass, key",
+    [
+        ("underwater", 20.0, "thrust_1_ms"),
+        ("surface", 20.0, "thrust_1_ms"),
+        ("aerial", 1.2, "hover_thrust"),
+    ],
+)
+def test_minimal_build_type_cad_mass(category, mass, key):
+    """The simple path: only type + CAD + mass. No actuators, no failure, needs are given."""
+    upload = _box_upload([500, 300, 200])
+    spec = {"name": "min", "category": category, "mass": mass, "geometry": {"unit": "mm"}}
+    r = client.post(f"/api/build/{upload}", json=spec)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["has_actuators"] is False
+    assert not [c for c in body["checks"] if c["status"] == "fail"]
+    item = body["requirements"]["items"][key]
+    assert item["low"] <= item["nominal"] <= item["high"] and item["nominal"] > 0
+    if category == "aerial":
+        assert item["nominal"] == pytest.approx(mass * 9.80665)
+    report = zipfile.ZipFile(
+        io.BytesIO(client.get(f"/api/download/{upload}/{body['result']}").content)
+    ).read("min/report.txt")
+    assert b"What the robot needs" in report
+
+
+def test_ground_build_with_wheels_but_no_motor_data():
+    upload = _box_upload([400, 300, 100])
+    wheels = [
+        {"name": n, "position": [x, y, 0.05], "radius": 0.06, "driven": True, "stall_torque": None}
+        for n, x, y in (("fl", 0.15, -0.17), ("fr", 0.15, 0.17), ("rl", -0.15, -0.17))
+    ] + [{"name": "rr", "position": [-0.15, 0.17, 0.05], "radius": 0.06, "driven": True}]
+    spec = {
+        "name": "min_ground",
+        "category": "ground",
+        "mass": 6.0,
+        "geometry": {"unit": "mm"},
+        "wheels": wheels,
+    }
+    r = client.post(f"/api/build/{upload}", json=spec)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["has_actuators"] is False
+    assert not [c for c in body["checks"] if c["status"] == "fail"]
+    assert any("no motor data" in w for w in body["warnings"])
+    assert body["model"]["contacts"][0]["torque_input"] is True
+    assert body["model"]["contacts"][0]["free_speed"] is None  # valid JSON, no Infinity
+    torque = body["requirements"]["items"]["slope_torque"]
+    assert torque["nominal"] > 0 and torque["wheels"] == 4
+    assert "torque in N m" in body["report"]
+
+
+def test_presets_endpoint_lists_sourced_values():
+    p = client.get("/api/presets").json()
+    assert p["thrusters"]["T200"]["forward"] == pytest.approx(51.5)
+    xl = p["wheel_motors"]["XL430-W250 (11.1 V)"]
+    assert xl["stall_torque"] == 1.4 and xl["no_load_rpm"] == 57.0
+
+
+def test_page_script_parses_and_has_the_simple_layout():
+    page = client.get("/").text
+    assert 'id="optional"' in page and "optTitle" in page
+    assert page.count('<script type="module">') == 1

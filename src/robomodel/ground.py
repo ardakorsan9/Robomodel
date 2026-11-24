@@ -10,7 +10,9 @@ tip-over limits), yaw inertia, wheel layout and how the weight is shared between
 
 Contact forces at each wheel, in the wheel's own frame (turned by its steering angle):
 * drive: a DC motor's straight torque-speed line, tau = tau_stall (command - omega / omega_0),
-  with the wheel rolling without slip (omega = v_long / R);
+  with the wheel rolling without slip (omega = v_long / R). Without motor data ("I don't
+  know") the input of a driven wheel is its torque in N m directly: tau = input, no motor
+  line and no limit (the requirements say how much torque the robot needs);
 * rolling resistance: C_rr N, smoothed around zero speed;
 * side force: friction mu N, growing with the slip angle (peak near SLIP_ANGLE) and smoothed
   around zero speed (regularised Coulomb friction); a caster gives none;
@@ -57,10 +59,14 @@ class GroundModel:
     contact_wheel: np.ndarray  # (k,) wheel index of each contact
     normal: np.ndarray  # (k,) normal load at rest, N
     stall_force: np.ndarray  # (k,) drive force at full command, standstill, N (0: not driven)
-    free_speed: np.ndarray  # (k,) ground speed at full command, no load, m/s
+    # (k,) ground speed at full command, no load, m/s (inf: torque-input wheel, no motor line)
+    free_speed: np.ndarray
     drive_input: np.ndarray  # (k,) index into the drive commands, -1 if not driven
     steer_input: np.ndarray  # (k,) index into the steering angles, -1 if not steered
     caster: np.ndarray  # (k,) bool
+    # (k,) bool: driven wheel without motor data; its input is the wheel torque in N m, and
+    # stall_force is then the force per N m of input (share / R)
+    direct: np.ndarray
     mu: float
     rolling: float
     label: str = "nominal"
@@ -81,6 +87,11 @@ class GroundModel:
     @property
     def driven_wheels(self) -> list[int]:
         return [i for i, w in enumerate(self.vehicle.wheels) if w.driven]
+
+    @property
+    def direct_torque(self) -> bool:
+        """True if any driven wheel takes a torque in N m instead of a motor command."""
+        return bool(self.direct.any())
 
     @property
     def steered_wheels(self) -> list[int]:
@@ -115,10 +126,21 @@ def build_ground_model(vehicle: Vehicle) -> GroundModel:
 
     driven = [i for i, w in enumerate(wheels) if w.driven]
     steered = [i for i, w in enumerate(wheels) if w.steered]
+    direct = np.array([wheels[i].direct_torque for i in owner])
     stall = np.array(
-        [share[k] * wheels[i].stall_torque / wheels[i].radius for k, i in enumerate(owner)]
+        [
+            share[k]
+            * (1.0 if wheels[i].direct_torque else wheels[i].stall_torque)
+            / wheels[i].radius
+            for k, i in enumerate(owner)
+        ]
     )
-    free = np.array([wheels[i].radius * wheels[i].no_load_speed for i in owner])
+    free = np.array(
+        [
+            np.inf if wheels[i].direct_torque else wheels[i].radius * wheels[i].no_load_speed
+            for i in owner
+        ]
+    )
     drive_in = np.array([driven.index(i) if i in driven else -1 for i in owner])
     steer_in = np.array([steered.index(i) if i in steered else -1 for i in owner])
     _, mu, crr = vehicle.surface
@@ -136,6 +158,7 @@ def build_ground_model(vehicle: Vehicle) -> GroundModel:
         drive_input=drive_in,
         steer_input=steer_in,
         caster=np.array([wheels[i].caster for i in owner]),
+        direct=direct,
         mu=mu,
         rolling=crr,
     )
@@ -165,7 +188,10 @@ def contact_forces(gm: GroundModel, nu: np.ndarray, inputs: np.ndarray) -> np.nd
     u, v, r = nu
     x, y = gm.contact_xy[:, 0], gm.contact_xy[:, 1]
     n_drive = len(gm.driven_wheels)
-    commands = np.clip(inputs[:n_drive], -1.0, 1.0)
+    raw = inputs[:n_drive]
+    # motor wheels: command in [-1, 1]; torque-input wheels: N m, not clipped
+    direct_in = np.array([gm.vehicle.wheels[i].direct_torque for i in gm.driven_wheels], dtype=bool)
+    commands = np.where(direct_in, raw, np.clip(raw, -1.0, 1.0))
     steer_cmd = inputs[n_drive:]
     delta = np.zeros(len(x))
     s_idx = gm.steer_input >= 0
@@ -282,7 +308,7 @@ def performance(gm: GroundModel) -> dict[str, float]:
     """Plain numbers: top speed, acceleration, climbable slope, turning."""
     out: dict[str, float] = {}
     driven = gm.drive_input >= 0
-    if not driven.any():
+    if not driven.any() or gm.direct_torque:  # no motor data: speed and acceleration are open
         return out
     w = gm.weight
     f_stall = float(gm.stall_force[driven].sum())
@@ -411,6 +437,12 @@ def _warnings(gm: GroundModel) -> list[str]:
         f"surface '{v.surface[0]}': mu = {gm.mu:g}, rolling resistance {gm.rolling:g} are "
         "typical values, not measured; the low/high models span 0.7-1.2 x mu"
     )
+    if gm.direct_torque:
+        out.append(
+            "no motor data for a driven wheel: its input is the wheel torque in N m (no motor "
+            "line, no limit), so top speed and acceleration are not computed; the requirements "
+            "tell how much torque the robot needs"
+        )
     out.append(
         "not modelled: load transfer while accelerating or turning, wheel spin inertia, "
         "suspension, slopes and bumps"
@@ -425,7 +457,7 @@ def model_range(gm: GroundModel) -> dict[str, GroundModel]:
             gm,
             mu=gm.mu * k_mu,
             rolling=gm.rolling * k_crr,
-            stall_force=gm.stall_force * k_motor,
+            stall_force=np.where(gm.direct, gm.stall_force, gm.stall_force * k_motor),
             label=label,
         )
     return {k: out[k] for k in ("low", "nominal", "high")}
@@ -467,7 +499,12 @@ def report(gm: GroundModel) -> str:
         lines.append(
             f"  {w.name:<10} x {xy[0]:+.3f} y {xy[1]:+.3f} m  load {n:.4g} N  {kind}"
             + (
-                f"  stall force {gm.stall_force[k]:.3g} N, free speed {gm.free_speed[k]:.3g} m/s"
+                (
+                    "  input: wheel torque in N m (no motor data: no limit, no motor line)"
+                    if gm.direct[k]
+                    else f"  stall force {gm.stall_force[k]:.3g} N, "
+                    f"free speed {gm.free_speed[k]:.3g} m/s"
+                )
                 if w.driven
                 else ""
             )
@@ -499,7 +536,12 @@ def report(gm: GroundModel) -> str:
         "",
         "Inputs: ["
         + ", ".join(
-            [f"drive {v.wheels[i].name} (-1..1)" for i in gm.driven_wheels]
+            [
+                f"drive {v.wheels[i].name} ("
+                + ("torque, N m" if v.wheels[i].direct_torque else "-1..1")
+                + ")"
+                for i in gm.driven_wheels
+            ]
             + [f"steer {v.wheels[i].name} (rad)" for i in gm.steered_wheels]
         )
         + "]",
@@ -527,14 +569,16 @@ def to_dict(gm: GroundModel) -> dict:
                 "xy_from_cg": xy.tolist(),
                 "normal_load": float(n),
                 "stall_force": float(f),
-                "free_speed": float(s),
+                "free_speed": float(s) if np.isfinite(s) else None,  # None: torque input
+                "torque_input": bool(d),
             }
-            for i, xy, n, f, s in zip(
+            for i, xy, n, f, s, d in zip(
                 gm.contact_wheel,
                 gm.contact_xy,
                 gm.normal,
                 gm.stall_force,
                 gm.free_speed,
+                gm.direct,
                 strict=True,
             )
         ],

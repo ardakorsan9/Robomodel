@@ -18,3 +18,4 @@ wheels/
 
 # Large third-party CAD files (download separately, see examples/)
 data/
+.claude/
